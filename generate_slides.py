@@ -337,6 +337,18 @@ def slugify(text, maxlen=40):
     return s[:maxlen].strip("-") or "event"
 
 
+def slide_name(ev, idx):
+    """Nom stable dérivé de la date + titre : l'ordre alphabétique suit la
+    chronologie et un événement garde son nom entre deux générations."""
+    d = ev["specs"].get("Date", "")
+    m = re.search(r"(\d{2})/(\d{2})/(\d{2})", d)
+    t = re.search(r"(\d{1,2})h(\d{2})", d)
+    prefix = f"20{m.group(3)}-{m.group(2)}-{m.group(1)}" if m else f"zz{idx:02d}"
+    if t:
+        prefix += f"-{int(t.group(1)):02d}h{t.group(2)}"
+    return f"slide-{prefix}-{slugify(ev['title'])}"
+
+
 def generate(out_dir=None, max_events=0, pages=99, cfg=None):
     """Génère le diaporama complet. Retourne la liste des PNG produits.
     cfg peut contenir les réglages ftp_* et smb_* pour pousser le
@@ -369,8 +381,12 @@ def generate(out_dir=None, max_events=0, pages=99, cfg=None):
     html_dir.mkdir()
 
     slides = []  # (html_path, png_path)
+    used = set()
     for i, ev in enumerate(events, start=1):
-        name = f"slide-{i:02d}-{slugify(ev['title'])}"
+        name = slide_name(ev, i)
+        while name in used:  # collision date+titre : suffixe
+            name += f"-{i}"
+        used.add(name)
         hp = html_dir / f"{name}.html"
         hp.write_text(slide_html(ev, i - 1, fonts), encoding="utf-8")
         slides.append((hp, out / f"{name}.png"))
@@ -380,6 +396,11 @@ def generate(out_dir=None, max_events=0, pages=99, cfg=None):
     for pp in render_all(slides):
         pngs.append(pp)
         print(f"  ✓ {pp.name}")
+
+    # manifeste du jeu attendu — uploadé en dernier par les synchros
+    (out / "manifest.txt").write_text(
+        "\n".join(p.name for p in pngs) + "\n", encoding="utf-8"
+    )
 
     if cfg:
         if cfg.get("ftp_host"):
@@ -429,15 +450,28 @@ def sync_ftp(out_dir, cfg):
                 else:
                     continue
             remote = {n for n in ftp.nlst() if n.endswith(pattern[1:])}
-            for name in sorted(remote - set(local)):
-                ftp.delete(name)
-                print(f"  - distant : {name} supprimé")
             for name, p in sorted(local.items()):
                 with open(p, "rb") as f:
                     ftp.storbinary(f"STOR {name}", f)
                 print(f"  ↑ {name}")
+            for name in sorted(remote - set(local)):
+                ftp.delete(name)
+                print(f"  - distant : {name} supprimé")
             if sub:
                 ftp.cwd("..")
+        manifest = out_dir / "manifest.txt"
+        if manifest.exists():
+            with open(manifest, "rb") as f:
+                ftp.storbinary("STOR manifest.txt", f)
+        remote_pngs = {n for n in ftp.nlst() if n.endswith(".png")}
+        expected = {p.name for p in out_dir.glob("*.png")}
+        if remote_pngs == expected:
+            print(f"  synchro FTP vérifiée : {len(expected)} fichiers conformes")
+        else:
+            print(
+                "  ⚠ divergence FTP — manquants : "
+                f"{sorted(expected - remote_pngs)} / en trop : {sorted(remote_pngs - expected)}"
+            )
     finally:
         try:
             ftp.quit()
@@ -474,13 +508,26 @@ def sync_smb(out_dir, cfg):
         if sub:
             makedirs(d, exist_ok=True)
         remote = {n for n in listdir(d) if n.endswith(pattern[1:])}
-        for name in sorted(remote - set(local)):
-            remove(d + "\\" + name)
-            print(f"  - smb : {name} supprimé")
         for name, p in sorted(local.items()):
             with open(p, "rb") as f, open_file(d + "\\" + name, "wb") as dst:
                 dst.write(f.read())
             print(f"  ↑ smb {name}")
+        for name in sorted(remote - set(local)):
+            remove(d + "\\" + name)
+            print(f"  - smb : {name} supprimé")
+    manifest = out_dir / "manifest.txt"
+    if manifest.exists():
+        with open(manifest, "rb") as f, open_file(base + "\\manifest.txt", "wb") as dst:
+            dst.write(f.read())
+    remote_pngs = {n for n in listdir(base) if n.endswith(".png")}
+    expected = {p.name for p in out_dir.glob("*.png")}
+    if remote_pngs == expected:
+        print(f"  synchro SMB vérifiée : {len(expected)} fichiers conformes")
+    else:
+        print(
+            "  ⚠ divergence SMB — manquants : "
+            f"{sorted(expected - remote_pngs)} / en trop : {sorted(remote_pngs - expected)}"
+        )
 
 
 def main():
