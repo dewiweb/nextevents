@@ -5,10 +5,20 @@ publie vers le poste OBS, via un partage réseau (NAS ou poste OBS).
 
 ## Prérequis
 
-- Serveur Debian avec **Docker** installé
-- Le dossier du projet copié sur le serveur (`scp`, `git clone`, ou
-  partage) — fichiers nécessaires : `Dockerfile`, `requirements.txt`,
-  `generate_slides.py`, `webui.py`
+- Serveur Debian avec **Docker** et **git** installés
+- Cloner le dépôt privé sur le serveur :
+
+  ```bash
+  git clone https://github.com/dewiweb/nextevents.git
+  cd nextevents
+  ```
+
+  Le dépôt étant privé, il faut une authentification GitHub sur le
+  serveur : soit un **token d'accès personnel (PAT)** avec scope `repo`
+  (`git clone https://<TOKEN>@github.com/dewiweb/nextevents.git`),
+  soit une **clé de déploiement SSH** ajoutée au dépôt
+  (Settings → Deploy keys → lecture seule suffit).
+
 - Une des destinations suivantes :
   - partage **SMB sur le poste OBS** (Windows : clic droit sur le
     dossier → Propriétés → Partage) ou sur le **NAS**
@@ -18,7 +28,6 @@ publie vers le poste OBS, via un partage réseau (NAS ou poste OBS).
 ## 1. Build & lancement
 
 ```bash
-cd nextevents
 docker build -t nextevents .
 
 docker run -d --name nextevents --restart unless-stopped \
@@ -98,7 +107,9 @@ docker restart nextevents          # redémarrage
 **Mise à jour de l'app** après modification du code :
 
 ```bash
-docker build -t nextevents . && docker rm -f nextevents \
+cd nextevents && git pull \
+  && docker build -t nextevents . \
+  && docker rm -f nextevents \
   && docker run -d --name nextevents --restart unless-stopped \
        -p 8080:8080 -v nextevents-data:/data nextevents
 ```
