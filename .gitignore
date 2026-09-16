@@ -5,11 +5,16 @@ __pycache__/
 # sortie générée
 diaporama/
 
-# fontes téléchargées au runtime
+# fontes et cache d'images téléchargés au runtime
+# (les SVG de logo sont des sources, ils restent commités)
 assets/fonts/
+assets/cache/
 
 # fichiers d'analyse temporaires
 page1.html
 event1.html
 app.css
 sprite.svg
+
+# asset générique du site, non utilisé
+assets/share.png

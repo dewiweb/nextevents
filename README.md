@@ -2,8 +2,12 @@
 
 Récupère les rencontres à venir depuis
 <https://www.leschampslibres.fr/au-programme/categorie/rencontres-aux-champs-libres>
-et génère des diapos **1920×1080** (PNG) reprenant la charte du site
+et génère des diapos **UHD 3840×2160** (PNG, prêtes pour le très grand
+écran — OBS les adapte à la toile ; HD 1920×1080 en option dans l'UI
+ou `--size hd`) reprenant la charte du site
 (fonte Oldschool Grotesk, palette pastel, icônes, coins arrondis sur fond noir).
+Les images sont récupérées en résolution native depuis OpenAgenda
+quand l'événement en provient.
 
 ## Architecture
 
@@ -91,3 +95,17 @@ python3 webui.py                      # UI sur http://localhost:8080
 Dépendances : `pip install -r requirements.txt` puis
 `playwright install chromium`. Sans Playwright, le script retombe
 sur `firefox --headless` (rendu un peu moins net).
+
+## Sobriété
+
+Aligné sur l'éco-conception du site : à chaque run, seules les diapos
+dont le contenu a changé sont re-rendues ; les images (URLs versionnées)
+ne sont téléchargées qu'une fois (`assets/cache/`) ; la synchro FTP/SMB
+n'envoie que les fichiers absents ou modifiés et vérifie le résultat
+contre le manifeste.
+
+## Licence
+
+Contenus du site leschampslibres.fr diffusés sous
+[CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/deed.fr) —
+attribution « Les Champs Libres ». Voir `LICENSE`.

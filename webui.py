@@ -36,6 +36,7 @@ lock = threading.Lock()
 DEFAULTS = {
     "interval_hours": 0,
     "max_events": 0,
+    "resolution": "uhd",
     "ftp_host": "",
     "ftp_port": 21,
     "ftp_user": "",
@@ -96,7 +97,10 @@ def run_generation():
         s = load_settings()
         with contextlib.redirect_stdout(LogWriter()):
             generate_slides.generate(
-                out_dir=OUT_DIR, max_events=s["max_events"], cfg=s
+                out_dir=OUT_DIR, max_events=s["max_events"], cfg=s,
+                size=generate_slides.SIZES.get(
+                    s["resolution"], generate_slides.DEFAULT_SIZE
+                ),
             )
         state["last_run"] = time.time()
     except Exception as e:
@@ -167,7 +171,7 @@ pre{background:#141414;border:1px solid #302f2e;border-radius:10px;
 a.link{color:#e3c2b7}
 </style></head><body>
 <h1><span class="dot">●</span> Nextevents</h1>
-<p class="sub">Diaporama OBS des rencontres aux Champs Libres — 1920×1080 PNG</p>
+<p class="sub">Diaporama OBS des rencontres aux Champs Libres — PNG 16:9</p>
 
 <div class="card">
   <div class="row">
@@ -182,9 +186,16 @@ a.link{color:#e3c2b7}
       <input id="interval" type="number" min="0" step="1"></label>
     <label>Nb max d'événements (0 = tous)
       <input id="maxev" type="number" min="0" step="1"></label>
+    <label>Résolution
+      <select id="res" style="width:auto">
+        <option value="uhd">UHD 3840×2160</option>
+        <option value="hd">HD 1920×1080</option>
+      </select></label>
     <button class="ghost" onclick="save()">Enregistrer</button>
     <span class="status" id="saved"></span>
   </div>
+  <p class="sub" style="margin:10px 0 0">Changer de résolution re-rend
+  toutes les diapos à la prochaine génération.</p>
 </div>
 
 <div class="card">
@@ -229,6 +240,7 @@ async function refresh(){
   const s = await (await fetch('/api/status')).json();
   document.getElementById('interval').value = s.settings.interval_hours;
   document.getElementById('maxev').value = s.settings.max_events;
+  document.getElementById('res').value = s.settings.resolution;
   document.getElementById('ftp_host').value = s.settings.ftp_host;
   document.getElementById('ftp_port').value = s.settings.ftp_port;
   document.getElementById('ftp_path').value = s.settings.ftp_path;
@@ -260,6 +272,7 @@ async function save(){
     headers:{'Content-Type':'application/json'},
     body:JSON.stringify({
       interval_hours:+interval.value, max_events:+maxev.value,
+      resolution:res.value,
       ftp_host:ftp_host.value, ftp_port:+ftp_port.value,
       ftp_path:ftp_path.value, ftp_user:ftp_user.value,
       ftp_pass:ftp_pass.value, ftp_tls:ftp_tls.checked?1:0,
@@ -323,6 +336,8 @@ def api_settings():
             continue
         if k in ("ftp_pass", "smb_pass") and body[k] == "":
             continue  # vide = inchangé
+        if k == "resolution" and body[k] not in generate_slides.SIZES:
+            continue
         if isinstance(d, int):
             try:
                 s[k] = max(0, int(body[k]))

@@ -1,6 +1,7 @@
 .venv/
 diaporama/
-assets/
+assets/fonts/
+assets/cache/
 *.png
 *.html
 *.pdf

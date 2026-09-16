@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """
-Génère un diaporama OBS (PNG 1920x1080) des rencontres à venir
+Génère un diaporama OBS (PNG 16:9, UHD 3840x2160 par défaut,
+HD 1920x1080 via --size hd) des rencontres à venir
 aux Champs Libres, à partir de la page :
 https://www.leschampslibres.fr/au-programme/categorie/rencontres-aux-champs-libres
 
 Sortie : dossier `diaporama/` dont les PNG et HTML sont remplacés
 à chaque exécution, contenant
-  - slide-XX-*.png   images 1920x1080 (source "Diaporama" d'OBS)
-  - html/slide-XX-*.html  sources HTML autonomes (utilisables via source "Navigateur")
+  - slide-*.png   images 16:9 (source "Diaporama" d'OBS)
+  - html/slide-*.html  sources HTML autonomes (utilisables via source "Navigateur")
 
 Dépendances : requests, beautifulsoup4, pillow, firefox (rendu headless).
 """
@@ -16,11 +17,13 @@ import argparse
 import base64
 import html
 import io
+import json
 import re
 import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from urllib.parse import urljoin
@@ -93,6 +96,9 @@ def ensure_fonts():
     return out
 
 
+
+
+
 def parse_card(card):
     """Extrait les infos d'une carte .v-event de la liste."""
     link = card.select_one("a.v-event__link")
@@ -145,12 +151,19 @@ def parse_detail(ev):
         print(f"  ! détail KO {ev['url']} : {e}")
         return ev
 
+    # vraie image de l'événement : bannière, sinon og:image / carte
+    # UNIQUEMENT si elles pointent vers /media/ (le site renvoie sinon son
+    # logo générique /build/.../share.png)
+    img = soup.select_one("img.v-banner__picture")
     og = soup.select_one('meta[property="og:image"]')
-    if og and og.get("content"):
+    if img and img.get("src"):
+        ev["image"] = urljoin(BASE, img["src"])
+    elif og and "/media/" in og.get("content", ""):
         ev["image"] = og["content"]
+    elif ev.get("card_img") and "/media/" in ev["card_img"]:
+        ev["image"] = ev["card_img"]
     else:
-        img = soup.select_one("img.v-banner__picture")
-        ev["image"] = urljoin(BASE, img["src"]) if img else ev.get("card_img")
+        ev["image"] = None
 
     cap = soup.select_one(".v-banner__caption")
     ev["credit"] = " ".join(cap.get_text().split()) if cap else ""
@@ -172,16 +185,72 @@ def parse_detail(ev):
     return ev
 
 
+CACHE_DIR = ROOT / "assets" / "cache"
+OA_MAP_FILE = CACHE_DIR / "oa-map.json"
+_OA_LOCK = threading.Lock()
+
+
+def openagenda_image(uid):
+    """Résout l'image originale d'un événement OpenAgenda à partir de son
+    UID (extrait de l'URL /media/.../open-agenda/<uid>-... du site).
+    Retourne l'URL img.openagenda.com en pleine résolution, ou None.
+    La correspondance uid → URL est mise en cache (page ~470 Ko)."""
+    try:
+        m = json.loads(OA_MAP_FILE.read_text())
+    except Exception:
+        m = {}
+    if uid in m:
+        return m[uid]
+    try:
+        h = get(f"https://openagenda.com/events/{uid}").text
+        og = next(
+            (
+                re.search(r'content="([^"]+)"', t).group(1)
+                for t in re.findall(r"<meta[^>]+>", h)
+                if "og:image" in t and 'content="' in t
+            ),
+            None,
+        )
+        if og and "img.openagenda.com" in og:
+            url = re.sub(r"/u/[^/]+/", "/u/3840x0/", og)
+            with _OA_LOCK:
+                try:
+                    m = json.loads(OA_MAP_FILE.read_text())
+                except Exception:
+                    m = {}
+                m[uid] = url
+                OA_MAP_FILE.parent.mkdir(parents=True, exist_ok=True)
+                OA_MAP_FILE.write_text(json.dumps(m, indent=0))
+            return url
+    except Exception as e:
+        print(f"  ! openagenda {uid} : {e}")
+    return None
+
+
 def download_image(ev):
-    """Télécharge l'image et la retourne en data URI (HTML autonome)."""
+    """Télécharge l'image et la retourne en data URI (HTML autonome).
+    Cache local : les URLs d'images sont versionnées, on ne retélécharge
+    jamais deux fois la même (sobriété)."""
     url = ev.get("image") or ev.get("card_img")
+    uid = re.search(r"open-agenda/(\d+)", url or "")
+    if uid:
+        url = openagenda_image(uid.group(1)) or url
     if not url:
         ev["img_data"] = None
         return ev
+    from urllib.parse import urlsplit
+
+    cache = CACHE_DIR / Path(urlsplit(url).path).name
     try:
-        r = get(url)
-        mime = r.headers.get("Content-Type", "image/jpeg").split(";")[0]
-        ev["img_data"] = f"data:{mime};base64,{base64.b64encode(r.content).decode()}"
+        if cache.exists():
+            data, mime = cache.read_bytes(), "image/jpeg"
+        else:
+            r = get(url)
+            data = r.content
+            mime = r.headers.get("Content-Type", "image/jpeg").split(";")[0]
+            cache.parent.mkdir(parents=True, exist_ok=True)
+            cache.write_bytes(data)
+        ev["img_data"] = f"data:{mime};base64,{base64.b64encode(data).decode()}"
     except Exception as e:
         print(f"  ! image KO {url} : {e}")
         ev["img_data"] = None
@@ -191,20 +260,25 @@ def download_image(ev):
 def icon_svg(name):
     path = ICONS.get(name, ICONS["calendar"])
     return (
-        f'<svg viewBox="0 0 24 24" width="34" height="34" '
+        f'<svg viewBox="0 0 24 24" width="42" height="42" '
         f'aria-hidden="true"><path d="{path}" fill="currentColor"/></svg>'
     )
 
 
-def truncate(text, limit=520):
+def truncate(text, limit=400):
     if len(text) <= limit:
         return text
     cut = text[:limit].rsplit(" ", 1)[0]
     return cut.rstrip(".,;:!?") + "…"
 
 
+def asset_svg(name):
+    p = ROOT / "assets" / name
+    return p.read_text(encoding="utf-8") if p.exists() else ""
+
+
 def slide_html(ev, idx, fonts):
-    bg, dark = PALETTE[idx % len(PALETTE)]
+    bg, dark = "#efeae6", "#bfbbb8"
     tag = ev["specs"].get("Catégorie", "Rencontre")
     specs_html = "".join(
         f'<div class="spec">{icon_svg(SPEC_ICONS[k])}'
@@ -212,13 +286,30 @@ def slide_html(ev, idx, fonts):
         for k in SPEC_ORDER
         if k in ev["specs"]
     )
+    n_title = len(ev["title"])
+    h1_size = 80 if n_title < 50 else 64 if n_title < 80 else 52
+    n_specs = sum(1 for k in SPEC_ORDER if k in ev["specs"])
+    specs_cls = "specs specs--tight" if n_specs >= 4 else "specs"
+
+    credit = html.escape(ev.get("credit", ""))
     if ev.get("img_data"):
         media = (
             f'<img class="photo" src="{ev["img_data"]}" alt="">'
-            f'<div class="credit">{html.escape(ev.get("credit", ""))}</div>'
+            + (f'<div class="credit">{credit}</div>' if credit else "")
         )
     else:
-        media = f'<div class="photo photo--empty" style="background:{dark}"></div>'
+        arc_color = PALETTE[idx % len(PALETTE)][1]
+        media = f"""<div class="photo photo--empty" style="background:{dark}">
+<svg viewBox="0 0 780 970" preserveAspectRatio="xMidYMid slice">
+ <g fill="none" stroke="rgba(255,255,255,.42)" stroke-width="86">
+  <circle cx="-60" cy="1030" r="340"/><circle cx="-60" cy="1030" r="560"/>
+  <circle cx="-60" cy="1030" r="780"/>
+ </g>
+ <g fill="none" stroke="{arc_color}" stroke-width="60" opacity=".55">
+  <circle cx="850" cy="-40" r="260"/><circle cx="850" cy="-40" r="440"/>
+ </g>
+</svg>
+<div class="ph-logo">{asset_svg('logo-full.svg')}</div></div>"""
 
     return f"""<!DOCTYPE html>
 <html lang="fr"><head><meta charset="utf-8">
@@ -231,58 +322,81 @@ def slide_html(ev, idx, fonts):
 html,body{{width:1920px;height:1080px;overflow:hidden}}
 body{{font-family:'Oldschool Grotesk',Arial,sans-serif;color:{INK};
  background:#000;display:flex;flex-direction:column}}
-.card{{position:relative;flex:1;background:{bg};border-radius:48px;
+.card{{position:relative;flex:1;background:{bg};border-radius:72px;
  overflow:hidden;display:flex;flex-direction:column}}
-.deco{{position:absolute;top:-260px;right:-160px;width:900px;height:900px;
- border-radius:50%;background:radial-gradient(circle at 35% 35%,
- rgba(255,255,255,.55),rgba(255,255,255,.12) 70%);z-index:0}}
-.deco2{{position:absolute;bottom:-320px;left:520px;width:760px;height:760px;
- border-radius:50%;background:radial-gradient(circle at 60% 40%,
- rgba(255,255,255,.35),rgba(255,255,255,0) 70%);z-index:0}}
-main{{position:relative;z-index:1;flex:1;display:flex;align-items:center;
- gap:90px;padding:60px 80px}}
-.left{{flex:0 0 720px;display:flex;flex-direction:column;gap:18px}}
-.photo{{width:720px;height:540px;object-fit:cover;border-radius:28px;
- box-shadow:0 30px 80px rgba(20,20,20,.18);background:{dark}}}
+main{{flex:1;display:flex;gap:70px;padding:54px 64px;min-height:0}}
+.left{{flex:0 0 780px;position:relative;min-height:0}}
+.photo{{position:absolute;inset:0;width:100%;height:100%;
+ object-fit:cover;border-radius:48px;display:block;background:{dark}}}
 .photo--empty{{display:block}}
-.credit{{font-size:20px;color:rgba(20,20,20,.55)}}
-.right{{flex:1;display:flex;flex-direction:column;gap:30px;
- padding-bottom:20px}}
-.tag{{align-self:flex-start;background:#fff;border-radius:2em;
- padding:8px 30px;font-size:26px;font-weight:500;
- box-shadow:0 8px 30px rgba(20,20,20,.10)}}
-h1{{font-size:66px;font-weight:500;line-height:1.08;letter-spacing:-.01em}}
-.desc{{font-size:29px;line-height:1.42;color:rgba(20,20,20,.82);
- max-width:880px}}
-.specs{{margin-top:auto;display:flex;flex-wrap:wrap;gap:16px 44px}}
-.spec{{display:flex;align-items:center;gap:14px;font-size:30px;
+.photo--empty>svg{{position:absolute;inset:0;width:100%;height:100%}}
+.ph-logo{{position:absolute;inset:0;display:flex;align-items:center;
+ justify-content:center;color:rgba(20,20,20,.75)}}
+.ph-logo svg{{width:52%}}
+.tag{{position:absolute;left:32px;bottom:32px;z-index:2;background:#fff;
+ border-radius:2em;padding:12px 36px;font-size:31px;font-weight:500;
+ box-shadow:0 10px 34px rgba(20,20,20,.14)}}
+.credit{{position:absolute;right:24px;bottom:24px;z-index:2;font-size:18px;
+ line-height:1.3;max-width:420px;text-align:right;color:#fff;
+ background:rgba(20,20,20,.45);border-radius:1.2em;padding:5px 16px}}
+.right{{flex:1;display:flex;flex-direction:column;padding:40px 0;
+ min-height:0}}
+h1{{font-size:80px;font-weight:500;line-height:1.06;letter-spacing:-.01em;
+ display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;
+ overflow:hidden}}
+.desc{{font-size:34px;line-height:1.38;color:rgba(20,20,20,.78);
+ margin-top:36px;max-width:860px;display:-webkit-box;
+ -webkit-line-clamp:6;-webkit-box-orient:vertical;overflow:hidden}}
+.specs{{margin-top:auto;display:flex;flex-direction:column;gap:26px}}
+.specs--tight{{gap:16px}}
+.specs--tight .spec{{font-size:33px}}
+.spec{{display:flex;align-items:center;gap:18px;font-size:38px;
  font-weight:500}}
 .spec svg{{flex:0 0 auto}}
+.attrib{{position:absolute;right:44px;bottom:30px;font-size:19px;
+ color:rgba(20,20,20,.45);display:flex;align-items:center;gap:10px}}
+.attrib svg{{height:26px;width:auto}}
 </style></head><body>
 <div class="card">
-<div class="deco"></div><div class="deco2"></div>
 <main>
-  <div class="left">{media}</div>
-  <div class="right">
+  <div class="left">
+    {media}
     <span class="tag">{html.escape(tag)}</span>
-    <h1>{html.escape(ev['title'])}</h1>
+  </div>
+  <div class="right">
+    <h1 style="font-size:{h1_size}px">{html.escape(ev['title'])}</h1>
     <p class="desc">{html.escape(truncate(ev.get('desc','')))}</p>
-    <div class="specs">{specs_html}</div>
+    <div class="{specs_cls}">{specs_html}</div>
   </div>
 </main>
+<div class="attrib">{asset_svg('logo-mark.svg')}© Les Champs Libres — leschampslibres.fr — CC BY-SA</div>
 </div>
 </body></html>"""
 
 
-def render_png_firefox(html_path, png_path):
-    """Repli : capture via firefox --screenshot (dev local sans Playwright)."""
+SIZES = {"hd": (1920, 1080), "uhd": (3840, 2160)}
+DEFAULT_SIZE = SIZES["uhd"]
+
+
+def render_png_firefox(html_path, png_path, size=DEFAULT_SIZE):
+    """Repli : firefox --screenshot avec zoom + fenêtre aux dimensions
+    voulues (le HTML est dessiné pour 1920x1080)."""
+    w, h = size
+    html_path = Path(html_path).resolve()
     png_path = Path(png_path)
+    zoomed = html_path.with_suffix(".zoom.html")
+    zoomed.write_text(
+        html_path.read_text("utf-8").replace(
+            "</head>", f"<style>html{{zoom:{w / 1920}}}</style></head>"
+        ),
+        encoding="utf-8",
+    )
     with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
         tmp_out = Path(tmp.name)
     tmp_out.unlink()
     cmd = [
-        "firefox", "--headless", "--window-size=1920,1080",
-        "--screenshot", str(tmp_out), Path(html_path).as_uri(),
+        "firefox", "--headless", f"--window-size={w},{h}",
+        "--screenshot", str(tmp_out), zoomed.as_uri(),
     ]
     for _ in range(2):
         r = subprocess.run(cmd, capture_output=True, timeout=120)
@@ -291,20 +405,23 @@ def render_png_firefox(html_path, png_path):
     else:
         raise RuntimeError(f"firefox screenshot KO : {r.stderr.decode()[:400]}")
     img = Image.open(tmp_out).convert("RGB")
-    img = img.resize((1920, 1080)) if img.size != (1920, 1080) else img
+    img = img.resize(size) if img.size != size else img
     img.save(png_path, "PNG")
     tmp_out.unlink()
+    zoomed.unlink()
 
 
-def render_all(slides):
-    """Rend toutes les diapos. Playwright/Chromium si dispo (capture x2 puis
-    downscale LANCZOS = texte très net), sinon repli Firefox."""
+def render_all(slides, size=DEFAULT_SIZE):
+    """Rend les diapos via Playwright/Chromium (viewport 1920 +
+    device_scale_factor = size/1920 → texte vectoriel ultra net).
+    Repli Firefox si Playwright est absent."""
+    w, h = size
     try:
         from playwright.sync_api import sync_playwright
     except ImportError:
         for hp, pp in slides:
             try:
-                render_png_firefox(hp, pp)
+                render_png_firefox(hp, pp, size)
                 yield pp
             except Exception as e:
                 print(f"  ✗ {pp.name} : {e}")
@@ -314,16 +431,16 @@ def render_all(slides):
         browser = p.chromium.launch()
         page = browser.new_page(
             viewport={"width": 1920, "height": 1080},
-            device_scale_factor=2,
+            device_scale_factor=w / 1920,
         )
         for hp, pp in slides:
             try:
-                page.goto(Path(hp).as_uri())
+                page.goto(Path(hp).resolve().as_uri())
                 page.wait_for_function("document.fonts.status === 'loaded'")
                 shot = page.screenshot()
                 img = Image.open(io.BytesIO(shot)).convert("RGB")
-                if img.size != (1920, 1080):
-                    img = img.resize((1920, 1080), Image.LANCZOS)
+                if img.size != size:
+                    img = img.resize(size, Image.LANCZOS)
                 img.save(pp, "PNG")
                 yield pp
             except Exception as e:
@@ -342,14 +459,14 @@ def slide_name(ev, idx):
     chronologie et un événement garde son nom entre deux générations."""
     d = ev["specs"].get("Date", "")
     m = re.search(r"(\d{2})/(\d{2})/(\d{2})", d)
-    t = re.search(r"(\d{1,2})h(\d{2})", d)
+    t = re.search(r"(\d{1,2})h(\d{2})?", d)
     prefix = f"20{m.group(3)}-{m.group(2)}-{m.group(1)}" if m else f"zz{idx:02d}"
     if t:
-        prefix += f"-{int(t.group(1)):02d}h{t.group(2)}"
+        prefix += f"-{int(t.group(1)):02d}h{t.group(2) or '00'}"
     return f"slide-{prefix}-{slugify(ev['title'])}"
 
 
-def generate(out_dir=None, max_events=0, pages=99, cfg=None):
+def generate(out_dir=None, max_events=0, pages=99, cfg=None, size=DEFAULT_SIZE):
     """Génère le diaporama complet. Retourne la liste des PNG produits.
     cfg peut contenir les réglages ftp_* et smb_* pour pousser le
     dossier vers un FTP et/ou un partage SMB après génération."""
@@ -374,28 +491,46 @@ def generate(out_dir=None, max_events=0, pages=99, cfg=None):
 
     print(f"4/5 Génération du dossier {out}/…")
     out.mkdir(parents=True, exist_ok=True)
-    for p in out.glob("*.png"):
-        p.unlink()
     html_dir = out / "html"
-    shutil.rmtree(html_dir, ignore_errors=True)
-    html_dir.mkdir()
+    html_dir.mkdir(exist_ok=True)
 
-    slides = []  # (html_path, png_path)
+    # ne re-rendre que les diapos nouvelles ou modifiées ; supprimer
+    # celles qui n'existent plus (sobriété : pas de wipe systématique)
+    to_render, expected_png, expected_html = [], set(), set()
     used = set()
     for i, ev in enumerate(events, start=1):
         name = slide_name(ev, i)
         while name in used:  # collision date+titre : suffixe
             name += f"-{i}"
         used.add(name)
-        hp = html_dir / f"{name}.html"
-        hp.write_text(slide_html(ev, i - 1, fonts), encoding="utf-8")
-        slides.append((hp, out / f"{name}.png"))
+        expected_png.add(f"{name}.png")
+        expected_html.add(f"{name}.html")
+        hp, pp = html_dir / f"{name}.html", out / f"{name}.png"
+        content = slide_html(ev, i - 1, fonts)
+        if (
+            pp.exists()
+            and hp.exists()
+            and hp.read_text("utf-8") == content
+            and Image.open(pp).size == size
+        ):
+            continue
+        hp.write_text(content, encoding="utf-8")
+        to_render.append((hp, pp))
 
-    print("5/5 Rendu PNG…")
-    pngs = []
-    for pp in render_all(slides):
-        pngs.append(pp)
+    for p in out.glob("*.png"):
+        if p.name not in expected_png:
+            p.unlink()
+            print(f"  - {p.name} supprimée")
+    for p in html_dir.glob("*.html"):
+        if p.name not in expected_html:
+            p.unlink()
+
+    print(f"5/5 Rendu PNG — {len(to_render)} à rendre "
+          f"({len(expected_png) - len(to_render)} inchangées)…")
+    for pp in render_all(to_render, size):
         print(f"  ✓ {pp.name}")
+
+    pngs = sorted(out.glob("*.png"))
 
     # manifeste du jeu attendu — uploadé en dernier par les synchros
     (out / "manifest.txt").write_text(
@@ -450,7 +585,15 @@ def sync_ftp(out_dir, cfg):
                 else:
                     continue
             remote = {n for n in ftp.nlst() if n.endswith(pattern[1:])}
+            remote_size = {}
+            for n in remote:
+                try:
+                    remote_size[n] = ftp.size(n)
+                except Exception:
+                    pass
             for name, p in sorted(local.items()):
+                if remote_size.get(name) == p.stat().st_size:
+                    continue  # déjà à jour à distance
                 with open(p, "rb") as f:
                     ftp.storbinary(f"STOR {name}", f)
                 print(f"  ↑ {name}")
@@ -486,7 +629,9 @@ def sync_smb(out_dir, cfg):
     share = (cfg.get("smb_share") or "").strip()
     if not host or not share:
         return
-    from smbclient import listdir, makedirs, open_file, register_session, remove
+    from smbclient import (
+        listdir, makedirs, open_file, register_session, remove, stat,
+    )
 
     register_session(
         host,
@@ -508,7 +653,15 @@ def sync_smb(out_dir, cfg):
         if sub:
             makedirs(d, exist_ok=True)
         remote = {n for n in listdir(d) if n.endswith(pattern[1:])}
+        remote_size = {}
+        for n in remote:
+            try:
+                remote_size[n] = stat(d + "\\" + n).st_size
+            except Exception:
+                pass
         for name, p in sorted(local.items()):
+            if remote_size.get(name) == p.stat().st_size:
+                continue  # déjà à jour à distance
             with open(p, "rb") as f, open_file(d + "\\" + name, "wb") as dst:
                 dst.write(f.read())
             print(f"  ↑ smb {name}")
@@ -535,9 +688,16 @@ def main():
     ap.add_argument("--max", type=int, default=0, help="limiter à N événements (test)")
     ap.add_argument("--pages", type=int, default=99, help="nb max de pages à scraper")
     ap.add_argument("--out", default=None, help="dossier de sortie (défaut: diaporama/)")
+    ap.add_argument(
+        "--size", choices=sorted(SIZES), default="uhd",
+        help="résolution des diapos : uhd=3840x2160, hd=1920x1080",
+    )
     args = ap.parse_args()
     try:
-        generate(out_dir=args.out, max_events=args.max, pages=args.pages)
+        generate(
+            out_dir=args.out, max_events=args.max, pages=args.pages,
+            size=SIZES[args.size],
+        )
     except RuntimeError as e:
         sys.exit(str(e))
     print("Dans OBS : ajoutez une source « Diaporama » pointant sur ce dossier.")
