@@ -1,0 +1,8 @@
+.venv/
+diaporama/
+assets/
+*.png
+*.html
+*.pdf
+__pycache__/
+*.md

@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+.venv/
+
+# sortie générée
+diaporama/
+
+# fontes téléchargées au runtime
+assets/fonts/
+
+# fichiers d'analyse temporaires
+page1.html
+event1.html
+app.css
+sprite.svg
