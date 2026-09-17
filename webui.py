@@ -19,7 +19,7 @@ import threading
 import time
 from pathlib import Path
 
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, jsonify, request, send_file, send_from_directory
 
 import generate_slides
 
@@ -176,6 +176,8 @@ a.link{color:#e3c2b7}
 <div class="card">
   <div class="row">
     <button id="run" onclick="run()">Générer maintenant</button>
+    <button class="ghost" onclick="window.location='/api/download'">
+      Télécharger les diapos (.zip)</button>
     <span class="status" id="status">…</span>
   </div>
 </div>
@@ -407,6 +409,23 @@ def api_smb_test():
 @app.get("/slides/<path:name>")
 def slide_file(name):
     return send_from_directory(OUT_DIR, name)
+
+
+@app.get("/api/download")
+def api_download():
+    """Zippe le dossier de sortie (PNG + html/ + manifeste) à la volée."""
+    import zipfile
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for p in sorted(OUT_DIR.rglob("*")):
+            if p.is_file() and p.name != SETTINGS_FILE.name:
+                z.write(p, p.relative_to(OUT_DIR))
+    buf.seek(0)
+    return send_file(
+        buf, as_attachment=True,
+        download_name="nextevents-diapos.zip", mimetype="application/zip",
+    )
 
 
 if __name__ == "__main__":
