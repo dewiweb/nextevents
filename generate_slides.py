@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """
 Génère un diaporama OBS (PNG 16:9, UHD 3840x2160 par défaut,
-HD 1920x1080 via --size hd) des rencontres à venir
-aux Champs Libres, à partir de la page :
+HD 1920x1080 via --size hd) des événements à venir
+aux Champs Libres, à partir des pages catégories :
 https://www.leschampslibres.fr/au-programme/categorie/rencontres-aux-champs-libres
+https://www.leschampslibres.fr/au-programme/categorie/concerts-aux-champs-libres
+https://www.leschampslibres.fr/au-programme/categorie/projections-aux-champs-libres
 
 Sortie : dossier `diaporama/` dont les PNG et HTML sont remplacés
 à chaque exécution, contenant
@@ -33,7 +35,12 @@ from bs4 import BeautifulSoup
 from PIL import Image
 
 BASE = "https://www.leschampslibres.fr"
-LIST_URL = f"{BASE}/au-programme/categorie/rencontres-aux-champs-libres"
+# (libellé de secours, slug de la page catégorie)
+CATEGORIES = [
+    ("Rencontre", "rencontres-aux-champs-libres"),
+    ("Concert", "concerts-aux-champs-libres"),
+    ("Projection", "projections-aux-champs-libres"),
+]
 ROOT = Path(__file__).resolve().parent
 OUT_DIR = ROOT / "diaporama"
 FONT_DIR = ROOT / "assets" / "fonts"
@@ -105,6 +112,7 @@ def parse_card(card):
     if not link:
         return None
     img = card.select_one("img.v-event__picture")
+    tag = card.select_one(".c-tag__label")
     specs = {}
     for spec in card.select("p.v-event__spec"):
         icon = spec.select_one("svg[aria-label]")
@@ -115,31 +123,48 @@ def parse_card(card):
         "title": " ".join(link.get_text().split()),
         "url": urljoin(BASE, link["href"]),
         "card_img": urljoin(BASE, img["src"]) if img else None,
+        "tag": " ".join(tag.get_text().split()) if tag else None,
         "specs": specs,
     }
 
 
+def event_dt(ev):
+    """Clé de tri chronologique à partir du spec Date 'JJ/MM/AA à HHhMM'."""
+    d = ev["specs"].get("Date", "")
+    m = re.search(r"(\d{2})/(\d{2})/(\d{2})\D*(\d{1,2})h(\d{2})?", d)
+    if m:
+        return (2000 + int(m.group(3)), int(m.group(2)), int(m.group(1)),
+                int(m.group(4)), int(m.group(5) or 0))
+    return (9999, 12, 31, 23, 59)
+
+
 def list_events(max_pages=99):
-    """Itère les pages de la catégorie et retourne les événements."""
+    """Itère les pages de chaque catégorie et retourne les événements
+    dédupliqués, triés chronologiquement."""
     events, seen = [], set()
-    page = 1
-    while page <= max_pages:
-        url = LIST_URL if page == 1 else f"{LIST_URL}?page={page}"
-        soup = BeautifulSoup(get(url).text, "lxml")
-        cards = soup.select("div.v-event")
-        if not cards:
-            break
-        new = 0
-        for card in cards:
-            ev = parse_card(card)
-            if ev and ev["url"] not in seen:
-                seen.add(ev["url"])
-                events.append(ev)
-                new += 1
-        if new == 0:
-            break
-        print(f"  page {page} : {new} événements")
-        page += 1
+    for cat_label, slug in CATEGORIES:
+        list_url = f"{BASE}/au-programme/categorie/{slug}"
+        page = 1
+        while page <= max_pages:
+            url = list_url if page == 1 else f"{list_url}?page={page}"
+            soup = BeautifulSoup(get(url).text, "lxml")
+            cards = soup.select("div.v-event")
+            if not cards:
+                break
+            new = 0
+            for card in cards:
+                ev = parse_card(card)
+                if ev and ev["url"] not in seen:
+                    seen.add(ev["url"])
+                    if not ev.get("tag"):
+                        ev["tag"] = cat_label
+                    events.append(ev)
+                    new += 1
+            if new == 0:
+                break
+            print(f"  {cat_label} p{page} : {new} événements")
+            page += 1
+    events.sort(key=event_dt)
     return events
 
 
@@ -279,7 +304,7 @@ def asset_svg(name):
 
 def slide_html(ev, idx, fonts):
     bg, dark = "#efeae6", "#bfbbb8"
-    tag = ev["specs"].get("Catégorie", "Rencontre")
+    tag = ev.get("tag") or ev["specs"].get("Catégorie") or "Événement"
     specs_html = "".join(
         f'<div class="spec">{icon_svg(SPEC_ICONS[k])}'
         f'<span>{html.escape(ev["specs"][k])}</span></div>'

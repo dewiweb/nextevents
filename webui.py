@@ -236,22 +236,38 @@ a.link{color:#e3c2b7}
 <div class="card"><label>Journal</label><pre id="log">—</pre></div>
 
 <script>
+// champs en cours d'édition : ne pas les écraser au rafraîchissement auto
+const dirty = new Set();
+document.querySelectorAll('input,select').forEach(el => {
+  el.addEventListener('input', () => dirty.add(el.id));
+  el.addEventListener('change', () => dirty.add(el.id));
+});
+function setVal(id, v){
+  const el = document.getElementById(id);
+  if (!el || dirty.has(id) || el === document.activeElement) return;
+  el.value = v;
+}
+function setChecked(id, v){
+  const el = document.getElementById(id);
+  if (!el || dirty.has(id) || el === document.activeElement) return;
+  el.checked = !!v;
+}
 async function refresh(){
   const s = await (await fetch('/api/status')).json();
-  document.getElementById('interval').value = s.settings.interval_hours;
-  document.getElementById('maxev').value = s.settings.max_events;
-  document.getElementById('res').value = s.settings.resolution;
-  document.getElementById('ftp_host').value = s.settings.ftp_host;
-  document.getElementById('ftp_port').value = s.settings.ftp_port;
-  document.getElementById('ftp_path').value = s.settings.ftp_path;
-  document.getElementById('ftp_user').value = s.settings.ftp_user;
-  document.getElementById('ftp_tls').checked = !!s.settings.ftp_tls;
+  setVal('interval', s.settings.interval_hours);
+  setVal('maxev', s.settings.max_events);
+  setVal('res', s.settings.resolution);
+  setVal('ftp_host', s.settings.ftp_host);
+  setVal('ftp_port', s.settings.ftp_port);
+  setVal('ftp_path', s.settings.ftp_path);
+  setVal('ftp_user', s.settings.ftp_user);
+  setChecked('ftp_tls', s.settings.ftp_tls);
   document.getElementById('ftp_pass').placeholder =
     s.settings.has_pass ? '(enregistré — vide = inchangé)' : '(non défini)';
-  document.getElementById('smb_host').value = s.settings.smb_host;
-  document.getElementById('smb_share').value = s.settings.smb_share;
-  document.getElementById('smb_path').value = s.settings.smb_path;
-  document.getElementById('smb_user').value = s.settings.smb_user;
+  setVal('smb_host', s.settings.smb_host);
+  setVal('smb_share', s.settings.smb_share);
+  setVal('smb_path', s.settings.smb_path);
+  setVal('smb_user', s.settings.smb_user);
   document.getElementById('smb_pass').placeholder =
     s.settings.has_smb_pass ? '(enregistré — vide = inchangé)' : '(non défini)';
   const el = document.getElementById('status');
@@ -279,6 +295,7 @@ async function save(){
       smb_host:smb_host.value, smb_share:smb_share.value,
       smb_path:smb_path.value, smb_user:smb_user.value,
       smb_pass:smb_pass.value})});
+  dirty.clear();
   document.getElementById('saved').textContent = 'enregistré ✓';
   setTimeout(()=>document.getElementById('saved').textContent='',2000);
 }
