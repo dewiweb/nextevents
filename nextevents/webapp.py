@@ -150,7 +150,7 @@ def api_today_event(i):
 def api_today():
     """Génère today/index.html depuis les champs édités dans la webui,
     puis pousse vers les destinations configurées."""
-    from .today import push_today, write_today
+    from .today import push_today, render_today_png, write_today
 
     body = request.get_json(force=True, silent=True) or {}
     data = {
@@ -177,8 +177,16 @@ def api_today():
     if not data["title"]:
         return jsonify(ok=False, errors=["titre vide"]), 400
     write_today(data)
-    errors = push_today(load_settings())
-    return jsonify(ok=not errors, errors=errors, file="today/index.html")
+    cfg = load_settings()
+    errors = []
+    try:  # PNG à la même résolution que les autres diapos
+        render_today_png(_slide.SIZES.get(
+            cfg.get("resolution"), _slide.DEFAULT_SIZE))
+    except Exception as e:
+        errors.append(f"PNG : {e}")
+    errors += push_today(cfg)
+    return jsonify(ok=not errors, errors=errors,
+                   file="today/index.html")
 
 
 @app.get("/today/")

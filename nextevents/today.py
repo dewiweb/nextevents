@@ -103,14 +103,30 @@ def write_today(data, out_dir=None):
     return dest
 
 
-def push_today(cfg, out_dir=None):
-    """Pousse today/index.html vers le sous-dossier today/ des
-    destinations configurées (SMB/FTP). Renvoie une liste d'erreurs
-    (vide = tout OK)."""
+def render_today_png(size, out_dir=None):
+    """Rend today/index.html en today/index.png à la résolution `size`
+    (même réglage que les autres diapos). Renvoie le chemin du PNG."""
+    from .slide import render_all
+
     out = Path(out_dir) if out_dir else OUT_DIR
     src = out / "today" / "index.html"
-    if not src.exists():
-        return ["today/index.html absent"]
+    png = out / "today" / "index.png"
+    list(render_all([(src, png)], size=size))
+    if not png.exists():
+        raise RuntimeError("rendu de la diapo du jour impossible")
+    return png
+
+
+def push_today(cfg, out_dir=None):
+    """Pousse les fichiers de today/ (index.html, index.png) vers le
+    sous-dossier today/ des destinations configurées (SMB/FTP).
+    Renvoie une liste d'erreurs (vide = tout OK)."""
+    out = Path(out_dir) if out_dir else OUT_DIR
+    d = out / "today"
+    files = [p for p in sorted(d.glob("*")) if p.is_file()] \
+        if d.exists() else []
+    if not files:
+        return ["today/ absent"]
     errors = []
 
     smb_host = (cfg.get("smb_host") or "").strip()
@@ -128,9 +144,10 @@ def push_today(cfg, out_dir=None):
                 base += "\\" + str(cfg["smb_path"]).strip("/\\")
             d = base + "\\today"
             makedirs(d, exist_ok=True)
-            with open(src, "rb") as f, \
-                    open_file(d + "\\index.html", "wb") as dst:
-                dst.write(f.read())
+            for f in files:
+                with open(f, "rb") as fh, \
+                        open_file(d + "\\" + f.name, "wb") as dst:
+                    dst.write(fh.read())
         except Exception as e:
             errors.append(f"SMB : {e}")
 
@@ -157,8 +174,9 @@ def push_today(cfg, out_dir=None):
                 except ftplib.error_perm:
                     pass
                 ftp.cwd("today")
-                with open(src, "rb") as f:
-                    ftp.storbinary("STOR index.html", f)
+                for f in files:
+                    with open(f, "rb") as fh:
+                        ftp.storbinary("STOR " + f.name, fh)
             finally:
                 try:
                     ftp.quit()

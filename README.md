@@ -66,16 +66,19 @@ optionnel en pied de page (partenaires, séance de dédicace… — prérempli
 depuis les mentions de la description détaillée, aucun espace occupé si
 vide) et un champ « accessibilité » optionnel (LSF, audiodescription… —
 prérempli depuis la description, indice « sur place » avec les handicaps
-pris en compte, aucun espace occupé si vide). Le fond est choisissable dans la webui parmi 7 variantes sombres
-de la palette (encre, anthracite, pastels assombris). La webui a une
+pris en compte, aucun espace occupé si vide). Le fond se choisit dans
+la webui sur une palette de pastilles (7 variantes sombres : encre,
+anthracite, pastels assombris). La webui a une
 section « Diapo du jour » : choix de l'événement → champs préremplis par
 le scraping (`<strong>` dans la description détaillée, « animé par »),
 **description complète affichée pour vérification**, champs éditables
 (extraction best-effort — les rédacteurs ont une certaine liberté),
-puis « Générer » écrit `today/index.html` et le pousse vers le partage
-SMB/FTP dans le sous-dossier `today/`. Corriger et régénérer écrase le
-fichier distant. Gabarit : **`assets/today_template.html`**
-(1920×1080, autonome).
+puis « Générer » écrit `today/index.html` **et `today/index.png`**
+(même réglage de résolution que les autres diapos — source Navigateur
+ou Image dans OBS) et les pousse vers le partage SMB/FTP dans le
+sous-dossier `today/`. Corriger et régénérer écrase les fichiers
+distants. Gabarit : **`assets/today_template.html`** (1920×1080,
+autonome).
 
 ## Déploiement Docker
 

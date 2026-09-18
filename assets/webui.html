@@ -117,15 +117,8 @@ a.link{color:#e3c2b7}
         <button class="ghost" onclick="addSpeaker('','')">+ intervenant</button>
         <label>Animé par <input id="t_mod" style="width:230px"></label>
         <label>Fond
-          <select id="t_bg" style="width:auto">
-            <option value="#141414" selected>Encre</option>
-            <option value="#302f2e">Anthracite</option>
-            <option value="#363129">Jaune nuit</option>
-            <option value="#2b2e2c">Vert nuit</option>
-            <option value="#312a28">Terre nuit</option>
-            <option value="#313134">Bleu nuit</option>
-            <option value="#3d1813">Rouge nuit</option>
-          </select></label>
+          <div id="t_bg" style="display:flex;gap:8px;margin-top:8px">
+          </div></label>
       </div>
       <label>Notes — pied de page (partenaires, séance de dédicace… ;
         une ligne par mention, vide = rien d'affiché)
@@ -205,6 +198,26 @@ async function refresh(){
 async function run(){ await fetch('/api/run',{method:'POST'}); refresh(); }
 
 // ——— diapo du jour ———
+const BG_CHOICES = [
+  ['#141414','Encre'],['#302f2e','Anthracite'],['#363129','Jaune nuit'],
+  ['#2b2e2c','Vert nuit'],['#312a28','Terre nuit'],['#313134','Bleu nuit'],
+  ['#3d1813','Rouge nuit']];
+let todayBg = BG_CHOICES[0][0];
+function buildBgPalette(){
+  const box = document.getElementById('t_bg');
+  box.innerHTML = '';
+  BG_CHOICES.forEach(([v,name]) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.title = name;
+    b.style.cssText = 'width:42px;height:42px;border-radius:50%;' +
+      'cursor:pointer;padding:0;background:'+v+';border:3px solid ' +
+      (v===todayBg ? '#f6e3bb' : 'rgba(239,234,230,.15)') +
+      ';box-shadow:' + (v===todayBg ? '0 0 0 2px #f6e3bb' : 'none');
+    b.onclick = () => { todayBg = v; buildBgPalette(); };
+    box.appendChild(b);
+  });
+}
+buildBgPalette();
 let todayEvents = [];
 async function loadTodayEvents(){
   todayEvents = await (await fetch('/api/today/events')).json();
@@ -257,7 +270,7 @@ async function genToday(){
     body: JSON.stringify({
       title:t_title.value, moderator:t_mod.value, speakers,
       note:t_note.value, access:t_access.value,
-      tag:ev.tag||'', color:ev.color||null, bg:t_bg.value})})).json();
+      tag:ev.tag||'', color:ev.color||null, bg:todayBg})})).json();
   el.textContent = r.ok ? 'générée ✓ envoyée sur le partage'
     : 'générée — envoi : '+(r.errors||[]).join(' ; ');
 }
