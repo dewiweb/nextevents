@@ -7,7 +7,8 @@ RUN pip install --no-cache-dir -r requirements.txt \
     && playwright install --with-deps chromium
 
 COPY generate_slides.py webui.py ./
-COPY assets/*.svg assets/
+COPY nextevents/ nextevents/
+COPY assets/ assets/
 
 ENV OUT_DIR=/data \
     PORT=8080

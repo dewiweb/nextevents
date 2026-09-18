@@ -1,11 +1,12 @@
-# nextevents — diaporama OBS des rencontres aux Champs Libres
+# nextevents — diaporama OBS des événements des Champs Libres
 
-Récupère les rencontres à venir depuis
-<https://www.leschampslibres.fr/au-programme/categorie/rencontres-aux-champs-libres>
-et génère des diapos **UHD 3840×2160** (PNG, prêtes pour le très grand
-écran — OBS les adapte à la toile ; HD 1920×1080 en option dans l'UI
-ou `--size hd`) reprenant la charte du site
-(fonte Oldschool Grotesk, palette pastel, icônes, coins arrondis sur fond noir).
+Récupère les événements à venir (rencontres, concerts, projections) depuis
+<https://www.leschampslibres.fr/au-programme> et génère des diapos
+**UHD 3840×2160** (PNG, prêtes pour le très grand écran — OBS les adapte
+à la toile ; HD 1920×1080 en option dans l'UI ou `--size hd`) reprenant
+la charte du site : fonte Oldschool Grotesk, **fond pastel de la card de
+l'événement** (`v-event--{couleur}` lu sur le site, neutre par défaut),
+icônes, coins arrondis sur fond noir.
 Les images sont récupérées en résolution native depuis OpenAgenda
 quand l'événement en provient.
 
@@ -13,19 +14,37 @@ quand l'événement en provient.
 
 ```
 Serveur Debian (Docker) ──volume──> montage NAS (SMB/NFS) ──> poste OBS
-        │                └── ou FTP ──> NAS (partage FTP)
+        │                └── ou FTP/SMB applicatif ──> NAS / poste OBS
         └─ web UI : http://serveur:8080
 ```
 
 - `webui.py` : interface web — bouton « Générer », rafraîchissement auto
-  toutes les N heures, galerie des diapos, journal en direct.
+  toutes les N heures, galerie des diapos, journal en direct,
+  téléchargement du dossier en .zip.
   Sert aussi les PNG sur le réseau (`/slides/<nom>`).
-- `generate_slides.py` : moteur de génération (utilisable aussi en CLI).
+- `generate_slides.py` : CLI — la logique vit dans le package
+  **`nextevents/`** :
 
-## Déploiement Docker (sur le serveur)
+| Module | Rôle |
+|---|---|
+| `paths.py` | chemins (racine, assets, cache) |
+| `scrape.py` | scraping des pages catégories + détails, couleur de card (`CARD_COLORS`) |
+| `media.py` | fontes du site, images OpenAgenda, cache |
+| `slide.py` | remplit `assets/slide_template.html`, rendu PNG (Playwright / firefox) |
+| `sync.py` | envoi FTP / SMB avec suppression des fichiers obsolètes |
+| `generate.py` | orchestration de la génération complète |
 
-Voir **[DEPLOY.md](DEPLOY.md)** pour les instructions complètes.
-Version courte :
+## Layout des diapos
+
+Le gabarit **`assets/slide_template.html`** (1920×1080) reproduit la card
+« événement » du site. Il est utilisable tel quel dans un navigateur
+(variables `$xxx` à remplacer) pour produire une diapo hors-site ou faire
+valider la charte. Les `html/slide-*.html` générés sont autonomes
+(fontes et images en base64) — utilisables via une source **Navigateur**.
+
+## Déploiement Docker
+
+Voir **[DEPLOY.md](DEPLOY.md)**. Version courte :
 
 ```bash
 docker build -t nextevents .
@@ -35,30 +54,36 @@ docker run -d --name nextevents --restart unless-stopped \
   nextevents
 ```
 
-`/mnt/nas/diaporama` = montage du partage NAS sur le serveur
-(CIFS ou NFS, à définir dans `/etc/fstab` du serveur).
-
 Tout est embarqué dans l'image : Python, les libs et Chromium
 (rendu via Playwright, capture ×2 puis downscale → texte très net).
+Le port est libre (`-p <port>:8080`).
 
 ## Rafraîchissement
 
-- **Manuel** : bouton « Générer maintenant » dans l'UI.
-- **Auto** : régler « Rafraîchissement auto » (heures) dans l'UI.
-- **Cron** (alternative) :
-  `0 7 * * * docker exec nextevents python generate_slides.py --out /data`
+- **Manuel** : bouton « Générer maintenant » ou `POST /api/run`.
+- **Auto** : « Rafraîchissement auto » (heures) dans l'UI.
+- **Cron** : `0 7 * * * docker exec nextevents python generate_slides.py --out /data`
 
-À chaque génération, les anciennes diapos sont **supprimées puis
-remplacées** (en local comme sur le FTP). Côté OBS, la source Diaporama
+À chaque génération, les diapos obsolètes sont **supprimées puis
+remplacées** (en local comme sur FTP/SMB). Côté OBS, la source Diaporama
 recharge automatiquement le dossier.
+
+## API
+
+| Requête | Effet |
+|---|---|
+| `POST /api/run` | lance une génération (scrape → rendu → synchros) |
+| `GET /api/status` | état, journal, liste des diapos, réglages |
+| `POST /api/settings` | enregistre les réglages (JSON) |
+| `POST /api/ftp/test` · `POST /api/smb/test` | teste la destination |
+| `GET /api/download` | archive .zip du dossier de diapos |
+| `GET /slides/<nom>` | sert un PNG |
 
 ## Envoi FTP / SMB (optionnel)
 
-Si le NAS n'est pas montable en volume Docker, l'UI permet de pousser
-les diapos après chaque génération :
+L'UI permet de pousser les diapos après chaque génération :
 
-- **FTP** : hôte, port, chemin distant, identifiant, mot de passe,
-  FTPS optionnel
+- **FTP** : hôte, port, chemin distant, identifiant, mot de passe, FTPS
 - **SMB** : hôte (IP ou nom du poste OBS / NAS), nom du partage,
   sous-dossier optionnel, identifiant (`DOMAINE\user` accepté),
   mot de passe — via `smbprotocol`, aucun montage requis côté serveur
@@ -67,34 +92,31 @@ Chaque section a un bouton « Tester la connexion ». Les diapos
 obsolètes sont supprimées de la destination à chaque synchro.
 
 Les mots de passe sont stockés en clair dans `<out>/settings.json`
-(volume `/data`) — jamais renvoyés au navigateur, mais protégez
-l'accès à ce fichier et à l'UI (réseau local de confiance).
+(volume `/data`) — jamais renvoyés au navigateur ni inclus dans le
+.zip — mais protégez l'accès à ce fichier et à l'UI
+(réseau local de confiance).
 
 ## OBS
 
 La source **Diaporama** accepte les images (png, jpg, bmp, gif, tif, webp).
-Sur le poste OBS : monter le partage NAS
-(ex. `\\NAS\diaporama` ou `smb://…`) puis pointer la source Diaporama
-sur ce dossier, régler intervalle et transition.
+Pointer la source sur le dossier (partage monté ou chemin local),
+régler intervalle et transition.
 
 Les coins arrondis sont noir pur (`#000`) — sur fond noir en scène,
 seuls les coins de la carte sont visibles.
 
-Les fichiers `html/` (dans le dossier de sortie) sont autonomes
-(fontes et images en base64) — utilisables via une source **Navigateur**.
-
 ## Usage local (hors Docker)
 
 ```bash
+pip install -r requirements.txt && playwright install chromium
 python3 generate_slides.py            # régénère dans ./diaporama/
 python3 generate_slides.py --max 3    # test rapide
-python3 generate_slides.py --out /chemin/nas/diaporama
+python3 generate_slides.py --out /chemin/nas/diaporama --size hd
 python3 webui.py                      # UI sur http://localhost:8080
 ```
 
-Dépendances : `pip install -r requirements.txt` puis
-`playwright install chromium`. Sans Playwright, le script retombe
-sur `firefox --headless` (rendu un peu moins net).
+Sans Playwright, le script retombe sur `firefox --headless`
+(rendu un peu moins net).
 
 ## Sobriété
 
