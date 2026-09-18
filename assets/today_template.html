@@ -2,7 +2,8 @@
 <!--
   Layout de la « diapo du jour » nextevents (1920×1080) : affichée en
   direct pendant une rencontre à l'auditorium. Version sombre de la
-  charte (encre #141414, texte #efeae6) — pas de visuel : titre,
+  charte (encre #141414, texte #efeae6), composition centrée avec le
+  sigle Champs Libres en filigrane — pas de visuel : titre,
   intervenants et leurs qualités, animateur.
   Rempli par nextevents/today.py via string.Template — variables :
     $font_regular/$font_medium  fontes Oldschool Grotesk (base64 woff2)
@@ -11,9 +12,10 @@
     $tag                        pastille catégorie (Rencontre/…)
     $h1_size                    taille du titre selon sa longueur
     $title                      titre (échappé HTML)
+    $speakers_label             « Avec » (vide si pas d'intervenant)
     $speakers_html              blocs intervenant : nom + qualité
     $moderator_html             ligne « animé par … » (ou vide)
-    $logo_mark                  logo Champs Libres (SVG inline)
+    $logo_mark                  logo Champs Libres (SVG, currentColor)
 -->
 <html lang="fr"><head><meta charset="utf-8">
 <style>
@@ -26,31 +28,35 @@ html,body{width:1920px;height:1080px;overflow:hidden}
 body{font-family:'Oldschool Grotesk',Arial,sans-serif;color:$light;
  background:#000;display:flex;flex-direction:column}
 .card{position:relative;flex:1;background:#141414;border-radius:72px;
- overflow:hidden;display:flex;flex-direction:column;
- padding:70px 90px 110px}
-.tag{align-self:flex-start;background:$accent;color:#141414;
- border-radius:2em;padding:12px 36px;font-size:30px;font-weight:500}
+ overflow:hidden;display:flex;flex-direction:column;align-items:center;
+ text-align:center;padding:64px 90px 100px}
+.watermark{position:absolute;inset:0;display:flex;align-items:center;
+ justify-content:flex-end;color:rgba(239,234,230,.05)}
+.watermark svg{width:980px;height:980px;margin-right:-220px}
+.tag{background:$accent;color:#141414;border-radius:2em;
+ padding:12px 36px;font-size:30px;font-weight:500}
 h1{font-size:80px;font-weight:500;line-height:1.08;letter-spacing:-.01em;
- margin-top:36px;display:-webkit-box;-webkit-line-clamp:3;
- -webkit-box-orient:vertical;overflow:hidden}
-.rule{height:3px;background:$accent;border-radius:2px;margin-top:52px;
+ margin-top:36px;max-width:1600px;display:-webkit-box;
+ -webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.rule{height:3px;background:$accent;border-radius:2px;margin-top:44px;
  width:180px}
-.spk-label{margin-top:40px;font-size:26px;font-weight:500;
+.spk-label{margin-top:38px;font-size:26px;font-weight:500;
  letter-spacing:.14em;text-transform:uppercase;color:$muted}
-.speakers{margin-top:30px;display:flex;flex-direction:column;gap:34px;
- min-height:0;overflow:hidden}
-.speaker{display:flex;flex-direction:column;gap:2px}
-.speaker .name{font-size:56px;font-weight:500}
-.speaker .qual{font-size:32px;line-height:1.32;color:$muted;
- max-width:1500px}
-.mod{margin-top:auto;padding-top:36px;font-size:34px;color:$faint;
- border-top:1px solid rgba(239,234,230,.12)}
+.speakers{margin-top:26px;display:flex;flex-direction:column;gap:32px;
+ align-items:center;min-height:0;overflow:hidden}
+.speaker{display:flex;flex-direction:column;gap:2px;align-items:center}
+.speaker .name{font-size:54px;font-weight:500}
+.speaker .qual{font-size:32px;line-height:1.3;color:$muted;
+ max-width:1400px}
+.mod{margin-top:auto;padding-top:34px;font-size:34px;color:$faint;
+ border-top:1px solid rgba(239,234,230,.12);width:100%}
 .mod b{font-weight:500;color:$light}
 .attrib{position:absolute;right:44px;bottom:30px;font-size:19px;
  color:rgba(239,234,230,.4);display:flex;align-items:center;gap:10px}
 .attrib svg{height:26px;width:auto}
 </style></head><body>
 <div class="card">
+  <div class="watermark">$logo_mark</div>
   <span class="tag">$tag</span>
   <h1 style="font-size:${h1_size}px">$title</h1>
   <div class="rule"></div>
