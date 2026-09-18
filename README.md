@@ -33,6 +33,9 @@ Serveur Debian (Docker) ──volume──> montage NAS (SMB/NFS) ──> poste 
 | `slide.py` | remplit `assets/slide_template.html`, rendu PNG (Playwright / firefox) |
 | `sync.py` | envoi FTP / SMB avec suppression des fichiers obsolètes |
 | `generate.py` | orchestration de la génération complète |
+| `settings.py` | réglages persistés + état runtime (webui) |
+| `runner.py` | exécution des générations + planificateur (webui) |
+| `webapp.py` | routes Flask ; page servie depuis `assets/webui.html` |
 
 ## Layout des diapos
 
