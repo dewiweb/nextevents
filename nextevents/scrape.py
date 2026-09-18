@@ -31,9 +31,11 @@ CARD_COLORS = {
     "blue":    ("#e2dff0", "#beb7e1"),  # pale-blue / pale-blue-600
 }
 
-SPEC_ICONS = {"Date": "calendar", "Durée": "timer", "Lieu": "pin", "Tarif": "ticket"}
+SPEC_ICONS = {"Date": "calendar", "Durée": "timer", "Lieu": "pin",
+              "Tarif": "ticket", "Public": "group",
+              "Accessibilité": "accessibility"}
 SPRITE_LABELS = {v: k for k, v in SPEC_ICONS.items()}
-SPEC_ORDER = ["Date", "Durée", "Lieu", "Tarif"]
+SPEC_ORDER = ["Date", "Durée", "Lieu", "Tarif", "Public", "Accessibilité"]
 
 session = requests.Session()
 session.headers["User-Agent"] = UA
@@ -188,10 +190,12 @@ def parse_detail(ev):
         ) or " ".join(intro_long.get_text(" ").split())
         ev["speakers"], ev["moderator"] = _extract_people(
             intro_long, ev["title"], ev["desc_long"])
+        ev["note"] = _extract_note(ev["desc_long"])
     else:
         ev["desc_long"] = ev.get("desc", "")
         ev["speakers"], ev["moderator"] = _extract_people(
             intro_long, ev["title"], ev["desc_long"])
+        ev["note"] = _extract_note(ev["desc_long"])
 
     for spec in soup.select("p.v-banner__spec"):
         use = spec.select_one("use[href]")
@@ -201,7 +205,53 @@ def parse_detail(ev):
             label = SPRITE_LABELS.get(m.group(1)) if m else None
             if label and label not in ev["specs"]:
                 ev["specs"][label] = " ".join(text.get_text().split())
+
+    # bloc « Destiné à … / Accessibilité » : le site reflète les champs
+    # OpenAgenda (publics / accessibility) — extraction directe, sans
+    # requête supplémentaire
+    aud = soup.select_one(".v-audience__intending .v-audience__tag")
+    ev["audience"] = " ".join(aud.get_text(" ").split()) if aud else ""
+    if ev["audience"]:
+        ev["specs"]["Public"] = ev["audience"]
+    ev["access_venue"] = [
+        " ".join(li.get_text(" ").split())
+        for li in soup.select(".v-audience__accessibility .v-audience__item")
+        if li.get_text(strip=True)
+    ]
+    # mentions « actionnables » (LSF, audiodescription…) dans la
+    # description : seules celles-ci montent en spec sur la diapo — le
+    # reste reste éditable dans la webui
+    ev["access"] = _extract_access(ev.get("desc_long") or "")
+    if ev["access"]:
+        ev["specs"]["Accessibilité"] = ev["access"].replace("\n", " · ")
     return ev
+
+
+# mentions d'accessibilité « actionnables » repérables dans la
+# description (pas de champ dédié côté OpenAgenda : texte libre des
+# programmateurs). Chaque motif produit un libellé normalisé affichable
+# sur une diapo ; les handicaps pris en compte sur place restent dans
+# access_venue (référence webui, pas de spec diapo).
+_ACCESS_PATTERNS = [
+    (re.compile(r"interpr[ée]t\w*\s+en\s+LSF|langue des signes", re.I),
+     "Interprétation en LSF"),
+    (re.compile(r"audiodescri\w*|audio-description", re.I),
+     "Audiodescription"),
+    (re.compile(r"surtitr", re.I), "Surtitrage"),
+    (re.compile(r"boucle magn[ée]tique|collier magn[ée]tique"
+               r"|casque d'amplification", re.I),
+     "Dispositifs d'écoute amplifiée"),
+]
+
+
+def _extract_access(text):
+    """Mentions d'accessibilité trouvées dans la description détaillée,
+    une par ligne, dédupliquées."""
+    out = []
+    for pat, label in _ACCESS_PATTERNS:
+        if pat.search(text) and label not in out:
+            out.append(label)
+    return "\n".join(out)
 
 
 # ——— extraction best-effort des intervenants / animateurs ———
@@ -301,3 +351,29 @@ def _extract_people(intro_long, title, text):
     if moderator:
         speakers = [s for s in speakers if s["name"] != moderator]
     return speakers, moderator
+
+
+# phrases de la description détaillée qui relèvent d'une mention de pied
+# de diapo (partenaires, dédicace…) — elles doivent *commencer* le
+# segment pour éviter les faux positifs du récit (« suivi », « cadre »
+# sont fréquents en pleine phrase). Proposition préremplie du champ
+# « notes » de la diapo du jour.
+_NOTE_RE = re.compile(
+    r"^(?:en partenariat|en lien avec|dans le cadre|suivi[ée]e?\b"
+    r"|rencontre suivie|entrée libre|sur réservation|séance de dédicace"
+    r"|une séance de dédicace|gratuit\b)", re.I)
+
+
+def _extract_note(text):
+    notes = []
+    for ln in (text or "").split("\n"):
+        ln = " ".join(ln.split()).strip(" ​")
+        if not ln:
+            continue
+        # retire le bout « animée par … » déjà affiché à part
+        ln = re.sub(r"^.*?anim[ée]e?\s+par\s+" + _NAME, "", ln)
+        for seg in re.split(r"(?<=[.!?])\s+", ln):
+            seg = re.sub(r"^et\s+", "", seg.strip(" ,.;:"))
+            if seg and _NOTE_RE.match(seg) and seg not in notes:
+                notes.append(seg[0].upper() + seg[1:])
+    return "\n".join(notes)

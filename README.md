@@ -11,6 +11,15 @@ icônes, coins arrondis sur fond noir.
 Les images sont récupérées en résolution native depuis OpenAgenda
 quand l'événement en provient.
 
+Specs affichées : date, durée, lieu, tarif + **public** (« Tout
+public »…, lu dans le bloc `.v-audience` — le site reflète les champs
+OpenAgenda `publics`/`accessibility`) et **accessibilité** quand la
+description mentionne un dispositif « actionable » (« interprétée en
+LSF », audiodescription, surtitrage, amplification d'écoute) — les
+handicaps pris en compte sur place (`access_venue`) restent en
+référence dans la webui, pas en spec. Les temps forts n'affichent pas
+de lieu (plusieurs espaces du bâtiment).
+
 ## Architecture
 
 ```
@@ -50,8 +59,15 @@ valider la charte. Les `html/slide-*.html` générés sont autonomes
 ## Diapo du jour (auditorium)
 
 Pendant une rencontre à l'auditorium, on diffuse une **slide fixe sans
-visuel**, en version sombre de la charte (fond `#141414`, texte clair) :
-titre, intervenants + qualités, animateur. La webui a une
+visuel**, en version sombre de la charte : composition centrée, sigle
+en filigrane croppé aux coins, titre, intervenants + qualités,
+animateur (accord animé/animée selon la catégorie), un champ « notes »
+optionnel en pied de page (partenaires, séance de dédicace… — prérempli
+depuis les mentions de la description détaillée, aucun espace occupé si
+vide) et un champ « accessibilité » optionnel (LSF, audiodescription… —
+prérempli depuis la description, indice « sur place » avec les handicaps
+pris en compte, aucun espace occupé si vide). Le fond est choisissable dans la webui parmi 7 variantes sombres
+de la palette (encre, anthracite, pastels assombris). La webui a une
 section « Diapo du jour » : choix de l'événement → champs préremplis par
 le scraping (`<strong>` dans la description détaillée, « animé par »),
 **description complète affichée pour vérification**, champs éditables

@@ -140,6 +140,9 @@ def api_today_event(i):
         specs=e.get("specs", {}), desc=e.get("desc", ""),
         desc_long=e.get("desc_long", ""),
         speakers=e.get("speakers", []), moderator=e.get("moderator", ""),
+        note=e.get("note", ""),
+        audience=e.get("audience", ""), access=e.get("access", ""),
+        access_venue=e.get("access_venue", []),
     )
 
 
@@ -154,6 +157,7 @@ def api_today():
         "title": str(body.get("title") or "").strip(),
         "tag": str(body.get("tag") or "").strip(),
         "color": body.get("color") or None,
+        "bg": str(body.get("bg") or "").strip(),
         "specs": {
             "Date": str(body.get("date") or "").strip(),
             "Lieu": str(body.get("lieu") or "").strip(),
@@ -167,6 +171,8 @@ def api_today():
             if isinstance(s, dict) and s.get("name")
         ],
         "moderator": str(body.get("moderator") or "").strip(),
+        "note": str(body.get("note") or "").strip(),
+        "access": str(body.get("access") or "").strip(),
     }
     if not data["title"]:
         return jsonify(ok=False, errors=["titre vide"]), 400

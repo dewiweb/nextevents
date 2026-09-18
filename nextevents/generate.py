@@ -46,6 +46,10 @@ def generate(out_dir=None, max_events=0, pages=99, cfg=None, size=DEFAULT_SIZE):
                     "desc_long": e.get("desc_long", ""),
                     "speakers": e.get("speakers", []),
                     "moderator": e.get("moderator", ""),
+                    "note": e.get("note", ""),
+                    "audience": e.get("audience", ""),
+                    "access": e.get("access", ""),
+                    "access_venue": e.get("access_venue", []),
                 }
                 for e in events
             ],

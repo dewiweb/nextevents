@@ -13,8 +13,10 @@ h1 .dot{color:#bf4c3c}
  padding:20px 22px;margin-bottom:22px}
 .row{display:flex;gap:14px;flex-wrap:wrap;align-items:center}
 label{font-size:14px;color:#8f8c8a}
-input,select{background:#141414;border:1px solid #302f2e;color:#efeae6;
- border-radius:8px;padding:8px 12px;font:inherit;width:110px}
+input,select,textarea{background:#141414;border:1px solid #302f2e;
+ color:#efeae6;border-radius:8px;padding:8px 12px;font:inherit;
+ width:110px}
+textarea{width:100%;resize:vertical}
 button{background:#bf4c3c;color:#fff;border:0;border-radius:8px;
  padding:10px 22px;font:inherit;font-weight:500;cursor:pointer}
 button:disabled{opacity:.45;cursor:default}
@@ -113,8 +115,28 @@ a.link{color:#e3c2b7}
         gap:8px"></div>
       <div class="row">
         <button class="ghost" onclick="addSpeaker('','')">+ intervenant</button>
-        <label>Animé par <input id="t_mod" style="width:250px"></label>
+        <label>Animé par <input id="t_mod" style="width:230px"></label>
+        <label>Fond
+          <select id="t_bg" style="width:auto">
+            <option value="#141414" selected>Encre</option>
+            <option value="#302f2e">Anthracite</option>
+            <option value="#363129">Jaune nuit</option>
+            <option value="#2b2e2c">Vert nuit</option>
+            <option value="#312a28">Terre nuit</option>
+            <option value="#313134">Bleu nuit</option>
+            <option value="#3d1813">Rouge nuit</option>
+          </select></label>
       </div>
+      <label>Notes — pied de page (partenaires, séance de dédicace… ;
+        une ligne par mention, vide = rien d'affiché)
+        <textarea id="t_note" rows="2"
+          placeholder="En partenariat avec …&#10;Rencontre suivie d'une séance de dédicace"></textarea></label>
+      <label>Accessibilité — mentions en pied (LSF, audiodescription… ;
+        une ligne par mention, vide = rien d'affiché)
+        <textarea id="t_access" rows="2"
+          placeholder="Interprétation en LSF"></textarea></label>
+      <div id="t_access_hint" style="font-size:13px;color:#8f8c8a;
+        margin-top:-6px"></div>
     </div>
     <div style="flex:1;min-width:330px">
       <label>Description détaillée (référence pour corriger les champs)</label>
@@ -211,6 +233,11 @@ async function prefillToday(){
   const e = await (await fetch('/api/today/event/'+i)).json();
   document.getElementById('t_title').value = e.title || '';
   document.getElementById('t_mod').value = e.moderator || '';
+  document.getElementById('t_note').value = e.note || '';
+  document.getElementById('t_access').value = e.access || '';
+  document.getElementById('t_access_hint').textContent =
+    (e.access_venue||[]).length
+      ? 'Sur place : '+e.access_venue.join(' · ') : '';
   document.getElementById('t_speakers').innerHTML = '';
   (e.speakers||[]).forEach(s => addSpeaker(s.name||'', s.quality||''));
   if (!(e.speakers||[]).length) addSpeaker('','');
@@ -229,7 +256,8 @@ async function genToday(){
     headers:{'Content-Type':'application/json'},
     body: JSON.stringify({
       title:t_title.value, moderator:t_mod.value, speakers,
-      tag:ev.tag||'', color:ev.color||null})})).json();
+      note:t_note.value, access:t_access.value,
+      tag:ev.tag||'', color:ev.color||null, bg:t_bg.value})})).json();
   el.textContent = r.ok ? 'générée ✓ envoyée sur le partage'
     : 'générée — envoi : '+(r.errors||[]).join(' ; ');
 }

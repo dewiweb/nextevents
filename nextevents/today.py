@@ -4,6 +4,7 @@ demande depuis la webui dans today/index.html, puis poussée vers le
 partage SMB / FTP configuré."""
 
 import html
+import re
 from pathlib import Path
 from string import Template
 
@@ -25,10 +26,13 @@ def _template():
 
 
 def today_html(data, fonts):
-    """data : {title, tag, color, speakers[{name, quality}], moderator}.
-    Renvoie le HTML autonome (fontes embarquées), version sombre de la
-    charte : encre #141414, texte clair, pastel en accent."""
+    """data : {title, tag, color, bg, speakers[{name, quality}],
+    moderator}. Renvoie le HTML autonome (fontes embarquées), version
+    sombre de la charte : fond sombre, texte clair, pastel en accent."""
     accent = CARD_COLORS.get(data.get("color"), CARD_COLORS[None])[0]
+    bg = data.get("bg") or "#141414"
+    if not re.fullmatch(r"#[0-9a-fA-F]{6}", bg):
+        bg = "#141414"
     speakers_html = "".join(
         f'<div class="speaker"><span class="name">{html.escape(s["name"])}</span>'
         + (f'<span class="qual">{html.escape(s["quality"])}</span>'
@@ -38,25 +42,53 @@ def today_html(data, fonts):
         if s.get("name")
     )
     moderator = (data.get("moderator") or "").strip()
-    moderator_html = (
-        f'<div class="mod">Animé par <b>{html.escape(moderator)}</b></div>'
-        if moderator else ""
+    # accord avec le nom de la catégorie : rencontre/projection animée,
+    # concert/spectacle/temps fort animé
+    fem = (data.get("tag") or "").lower() in (
+        "rencontre", "projection", "conférence", "lecture", "visite")
+    footer_bits = []
+    if moderator:
+        footer_bits.append(
+            f'<div class="mod-line">{"Animée" if fem else "Animé"} par '
+            f"<b>{html.escape(moderator)}</b></div>")
+    # lignes libres (partenaires, séance de dédicace…) — aucun espace
+    # occupé si le champ est vide
+    for ln in (data.get("note") or "").splitlines():
+        ln = ln.strip()
+        if ln:
+            footer_bits.append(
+                f'<div class="note-line">{html.escape(ln)}</div>')
+    # mentions d'accessibilité (LSF, audiodescription…) — idem : aucun
+    # espace occupé si le champ est vide
+    for ln in (data.get("access") or "").splitlines():
+        ln = ln.strip()
+        if ln:
+            footer_bits.append(
+                f'<div class="access-line">{html.escape(ln)}</div>')
+    footer_html = (
+        f'<div class="mod">{"".join(footer_bits)}</div>'
+        if footer_bits else ""
     )
     logo = ASSET_DIR / "logo-mark.svg"
-    n = len(data.get("title", ""))
+    title = data.get("title", "")
+    # espace insécable avant la ponctuation double : évite un « ? »
+    # orphelin en fin de ligne et respecte la typographie française
+    title_esc = re.sub(r"\s+([?!:;»])", "&nbsp;\\1", html.escape(title))
+    n = len(title)
     return _template().substitute(
         font_regular=fonts["regular"],
         font_medium=fonts["medium"],
         accent=accent,
+        bg=bg,
         light="#efeae6",
         muted="#8f8c8a",
         faint="#bfbbb8",
         tag=html.escape(data.get("tag") or "Événement"),
-        h1_size=80 if n < 50 else 64 if n < 80 else 52,
-        title=html.escape(data.get("title", "")),
+        h1_size=80 if n < 42 else 64 if n < 80 else 52,
+        title=title_esc,
         speakers_label="Avec" if speakers_html else "",
         speakers_html=speakers_html,
-        moderator_html=moderator_html,
+        footer_html=footer_html,
         logo_mark=logo.read_text("utf-8") if logo.exists() else "",
     )
 
