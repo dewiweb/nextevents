@@ -1,5 +1,6 @@
 """Scraping de leschampslibres.fr : listes catégories et pages de détail."""
 
+import datetime
 import re
 from urllib.parse import urljoin
 
@@ -14,6 +15,8 @@ CATEGORIES = [
     ("Rencontre", "rencontres-aux-champs-libres"),
     ("Concert", "concerts-aux-champs-libres"),
     ("Projection", "projections-aux-champs-libres"),
+    ("Spectacle", "spectacles-aux-champs-libres"),
+    ("Temps fort", "evenements-aux-champs-libres"),
 ]
 
 # Couleurs de card du site : nom du modifieur CSS -> (fond, variante foncée).
@@ -75,14 +78,21 @@ def parse_card(card):
     }
 
 
-def event_dt(ev):
-    """Clé de tri chronologique à partir du spec Date 'JJ/MM/AA à HHhMM'."""
+def event_dates(ev):
+    """Extrait (début, fin) du spec Date :
+    'Du JJ/MM/AA au JJ/MM/AA' (événement multi-jours, ex. temps fort)
+    ou 'JJ/MM/AA à HHhMM'. Renvoie des tuples (a, m, j, h, min)."""
     d = ev["specs"].get("Date", "")
+    m = re.search(r"(\d{2})/(\d{2})/(\d{2})\s*au\s*(\d{2})/(\d{2})/(\d{2})", d)
+    if m:
+        return ((2000 + int(m.group(3)), int(m.group(2)), int(m.group(1)), 0, 0),
+                (2000 + int(m.group(6)), int(m.group(5)), int(m.group(4)), 23, 59))
     m = re.search(r"(\d{2})/(\d{2})/(\d{2})\D*(\d{1,2})h(\d{2})?", d)
     if m:
-        return (2000 + int(m.group(3)), int(m.group(2)), int(m.group(1)),
-                int(m.group(4)), int(m.group(5) or 0))
-    return (9999, 12, 31, 23, 59)
+        t = (2000 + int(m.group(3)), int(m.group(2)), int(m.group(1)),
+             int(m.group(4)), int(m.group(5) or 0))
+        return t, t
+    return None, None
 
 
 def list_events(max_pages=99):
@@ -111,7 +121,19 @@ def list_events(max_pages=99):
                 break
             print(f"  {cat_label} p{page} : {new} événements")
             page += 1
-    events.sort(key=event_dt)
+    today = datetime.date.today()
+    today = (today.year, today.month, today.day)
+    for ev in events:
+        start, end = event_dates(ev)
+        ev["_dt"] = start
+        # événement multi-jours en cours (début passé ou aujourd'hui) :
+        # épinglé en tête du diaporama jusqu'à sa date de fin
+        ev["pinned"] = bool(
+            start and end and start[:3] != end[:3]
+            and start[:3] <= today <= end[:3]
+        )
+    events.sort(key=lambda e: (
+        0 if e["pinned"] else 1, e["_dt"] or (9999, 12, 31, 23, 59)))
     return events
 
 

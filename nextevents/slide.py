@@ -123,6 +123,10 @@ def slide_name(ev, idx):
     prefix = f"20{m.group(3)}-{m.group(2)}-{m.group(1)}" if m else f"zz{idx:02d}"
     if t:
         prefix += f"-{int(t.group(1)):02d}h{t.group(2) or '00'}"
+    if ev.get("pinned"):
+        # événement multi-jours en cours : nom de fichier trié en tête
+        # ('slide-00-' précède 'slide-20…' alphabétiquement)
+        prefix = "00-" + prefix
     return f"slide-{prefix}-{slugify(ev['title'])}"
 
 

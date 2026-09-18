@@ -83,23 +83,25 @@ def download_image(ev):
     jamais deux fois la même (sobriété)."""
     url = ev.get("image") or ev.get("card_img")
     uid = re.search(r"open-agenda/(\d+)", url or "")
-    if uid:
-        url = openagenda_image(uid.group(1)) or url
-    if not url:
-        ev["img_data"] = None
-        return ev
-    cache = CACHE_DIR / Path(urlsplit(url).path).name
-    try:
-        if cache.exists():
-            data, mime = cache.read_bytes(), "image/jpeg"
-        else:
-            r = get(url)
-            data = r.content
-            mime = r.headers.get("Content-Type", "image/jpeg").split(";")[0]
-            cache.parent.mkdir(parents=True, exist_ok=True)
-            cache.write_bytes(data)
-        ev["img_data"] = f"data:{mime};base64,{base64.b64encode(data).decode()}"
-    except Exception as e:
-        print(f"  ! image KO {url} : {e}")
-        ev["img_data"] = None
+    # candidats dans l'ordre : original OpenAgenda pleine résolution,
+    # puis repli sur l'image du site si son téléchargement échoue
+    urls = ([openagenda_image(uid.group(1))] if uid else []) + [url]
+    for u in urls:
+        if not u:
+            continue
+        cache = CACHE_DIR / Path(urlsplit(u).path).name
+        try:
+            if cache.exists():
+                data, mime = cache.read_bytes(), "image/jpeg"
+            else:
+                r = get(u)
+                data = r.content
+                mime = r.headers.get("Content-Type", "image/jpeg").split(";")[0]
+                cache.parent.mkdir(parents=True, exist_ok=True)
+                cache.write_bytes(data)
+            ev["img_data"] = f"data:{mime};base64,{base64.b64encode(data).decode()}"
+            return ev
+        except Exception as e:
+            print(f"  ! image KO {u} : {e}")
+    ev["img_data"] = None
     return ev
