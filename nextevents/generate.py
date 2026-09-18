@@ -32,6 +32,28 @@ def generate(out_dir=None, max_events=0, pages=99, cfg=None, size=DEFAULT_SIZE):
     with ThreadPoolExecutor(max_workers=6) as ex:
         events = list(ex.map(lambda e: download_image(parse_detail(e)), events))
 
+    # métadonnées pour la « diapo du jour » de la webui
+    import json
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "events.json").write_text(
+        json.dumps(
+            [
+                {
+                    "title": e["title"], "url": e["url"],
+                    "tag": e.get("tag"), "color": e.get("color"),
+                    "specs": e["specs"],
+                    "desc": e.get("desc", ""),
+                    "desc_long": e.get("desc_long", ""),
+                    "speakers": e.get("speakers", []),
+                    "moderator": e.get("moderator", ""),
+                }
+                for e in events
+            ],
+            ensure_ascii=False, indent=1,
+        ),
+        encoding="utf-8",
+    )
+
     print("3/5 Fontes…")
     fonts = ensure_fonts()
 

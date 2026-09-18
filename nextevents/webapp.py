@@ -105,6 +105,82 @@ def api_smb_test():
         return jsonify(ok=False, error=str(e))
 
 
+def _events_meta():
+    """Métadonnées des événements écrites par generate() (events.json)."""
+    import json
+    p = OUT_DIR / "events.json"
+    if not p.exists():
+        return []
+    try:
+        return json.loads(p.read_text("utf-8"))
+    except Exception:
+        return []
+
+
+@app.get("/api/today/events")
+def api_today_events():
+    return jsonify([
+        {
+            "i": i, "title": e["title"], "tag": e.get("tag"),
+            "date": e.get("specs", {}).get("Date", ""),
+            "lieu": e.get("specs", {}).get("Lieu", ""),
+        }
+        for i, e in enumerate(_events_meta())
+    ])
+
+
+@app.get("/api/today/event/<int:i>")
+def api_today_event(i):
+    evs = _events_meta()
+    if not 0 <= i < len(evs):
+        return jsonify(ok=False, error="index invalide"), 404
+    e = evs[i]
+    return jsonify(
+        title=e["title"], tag=e.get("tag"), color=e.get("color"),
+        specs=e.get("specs", {}), desc=e.get("desc", ""),
+        desc_long=e.get("desc_long", ""),
+        speakers=e.get("speakers", []), moderator=e.get("moderator", ""),
+    )
+
+
+@app.post("/api/today")
+def api_today():
+    """Génère today/index.html depuis les champs édités dans la webui,
+    puis pousse vers les destinations configurées."""
+    from .today import push_today, write_today
+
+    body = request.get_json(force=True, silent=True) or {}
+    data = {
+        "title": str(body.get("title") or "").strip(),
+        "tag": str(body.get("tag") or "").strip(),
+        "color": body.get("color") or None,
+        "specs": {
+            "Date": str(body.get("date") or "").strip(),
+            "Lieu": str(body.get("lieu") or "").strip(),
+        },
+        "speakers": [
+            {
+                "name": str(s.get("name") or "").strip(),
+                "quality": str(s.get("quality") or "").strip(),
+            }
+            for s in body.get("speakers", [])
+            if isinstance(s, dict) and s.get("name")
+        ],
+        "moderator": str(body.get("moderator") or "").strip(),
+    }
+    if not data["title"]:
+        return jsonify(ok=False, errors=["titre vide"]), 400
+    write_today(data)
+    errors = push_today(load_settings())
+    return jsonify(ok=not errors, errors=errors, file="today/index.html")
+
+
+@app.get("/today/")
+@app.get("/today/index.html")
+def today_page():
+    return send_from_directory(OUT_DIR / "today", "index.html")
+
+
 @app.get("/api/download")
 def api_download():
     """Zippe le dossier de sortie (PNG + html/ + manifeste) à la volée."""

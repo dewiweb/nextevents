@@ -1,6 +1,7 @@
 # nextevents — diaporama OBS des événements des Champs Libres
 
-Récupère les événements à venir (rencontres, concerts, projections) depuis
+Récupère les événements à venir (rencontres, concerts, projections,
+spectacles, temps forts multi-jours) depuis
 <https://www.leschampslibres.fr/au-programme> et génère des diapos
 **UHD 3840×2160** (PNG, prêtes pour le très grand écran — OBS les adapte
 à la toile ; HD 1920×1080 en option dans l'UI ou `--size hd`) reprenant
@@ -31,6 +32,7 @@ Serveur Debian (Docker) ──volume──> montage NAS (SMB/NFS) ──> poste 
 | `scrape.py` | scraping des pages catégories + détails, couleur de card (`CARD_COLORS`) |
 | `media.py` | fontes du site, images OpenAgenda, cache |
 | `slide.py` | remplit `assets/slide_template.html`, rendu PNG (Playwright / firefox) |
+| `today.py` | « diapo du jour » : slide fixe sans visuel pour l'événement en cours à l'auditorium |
 | `sync.py` | envoi FTP / SMB avec suppression des fichiers obsolètes |
 | `generate.py` | orchestration de la génération complète |
 | `settings.py` | réglages persistés + état runtime (webui) |
@@ -44,6 +46,20 @@ Le gabarit **`assets/slide_template.html`** (1920×1080) reproduit la card
 (variables `$xxx` à remplacer) pour produire une diapo hors-site ou faire
 valider la charte. Les `html/slide-*.html` générés sont autonomes
 (fontes et images en base64) — utilisables via une source **Navigateur**.
+
+## Diapo du jour (auditorium)
+
+Pendant une rencontre à l'auditorium, on diffuse une **slide fixe sans
+visuel**, en version sombre de la charte (fond `#141414`, texte clair) :
+titre, intervenants + qualités, animateur. La webui a une
+section « Diapo du jour » : choix de l'événement → champs préremplis par
+le scraping (`<strong>` dans la description détaillée, « animé par »),
+**description complète affichée pour vérification**, champs éditables
+(extraction best-effort — les rédacteurs ont une certaine liberté),
+puis « Générer » écrit `today/index.html` et le pousse vers le partage
+SMB/FTP dans le sous-dossier `today/`. Corriger et régénérer écrase le
+fichier distant. Gabarit : **`assets/today_template.html`**
+(1920×1080, autonome).
 
 ## Déploiement Docker
 
@@ -81,6 +97,10 @@ recharge automatiquement le dossier.
 | `POST /api/ftp/test` · `POST /api/smb/test` | teste la destination |
 | `GET /api/download` | archive .zip du dossier de diapos |
 | `GET /slides/<nom>` | sert un PNG |
+| `GET /api/today/events` | événements connus (depuis `events.json`) |
+| `GET /api/today/event/<i>` | champs préremplis d'un événement |
+| `POST /api/today` | génère `today/index.html` + envoi SMB/FTP |
+| `GET /today/index.html` | aperçu de la diapo du jour |
 
 ## Envoi FTP / SMB (optionnel)
 

@@ -175,6 +175,24 @@ def parse_detail(ev):
             junk.decompose()
         ev["desc"] = " ".join(intro.get_text(" ").split())
 
+    # description détaillée : intervenants (noms en <strong>) et animateur
+    intro_long = soup.select_one(".s-introduction--long")
+    if intro_long:
+        for junk in intro_long.select("nav, .c-breadcrumb"):
+            junk.decompose()
+        ev["desc_long"] = "\n".join(
+            ln for ln in (
+                " ".join(p.get_text(" ").split())
+                for p in intro_long.select("p")
+            ) if ln
+        ) or " ".join(intro_long.get_text(" ").split())
+        ev["speakers"], ev["moderator"] = _extract_people(
+            intro_long, ev["title"], ev["desc_long"])
+    else:
+        ev["desc_long"] = ev.get("desc", "")
+        ev["speakers"], ev["moderator"] = _extract_people(
+            intro_long, ev["title"], ev["desc_long"])
+
     for spec in soup.select("p.v-banner__spec"):
         use = spec.select_one("use[href]")
         text = spec.select_one(".v-banner__text")
@@ -184,3 +202,102 @@ def parse_detail(ev):
             if label and label not in ev["specs"]:
                 ev["specs"][label] = " ".join(text.get_text().split())
     return ev
+
+
+# ——— extraction best-effort des intervenants / animateurs ———
+# Les rédacteurs ont une certaine liberté ; les noms sont *souvent* en
+# <strong> suivis de leur qualité, l'animateur signalé par « animé par ».
+# Des replis existent (« X est qualité » dans le texte, « avec X » dans le
+# titre). La webui permet de corriger avant génération de la diapo du jour.
+
+_NAME = r"[A-ZÀ-Ý][\wÀ-ÿ'’\-]+(?:\s+[A-ZÀ-Ý][\wÀ-ÿ'’\-]+){1,4}"
+
+# coupe une qualité aux frontières narratives / mentions annexes
+_QUALITY_CUT = re.compile(
+    r"(?:\.(?=\s|$)"
+    r"|\s+et\s+anim[ée]e?|\s+anim[ée]e?\s+par|\s+En lien|\s+En partenariat"
+    r"|\s+Rencontre|\s+Suivie|\s+Dans le cadre|\s+Production\b"
+    r"|\s+Auteurs?\b|\s+mise en scène|\s+dont\b"
+    r"|,\s+(?:racontent|retrace|revient|explique|présente|analyse|interroge"
+    r"|détaille|propose|débat|explore|explorent|décrypte|décryptent|imprime"
+    r"|impriment|emmène|plonge|interprète|nous|ils|il)\b).*", re.S)
+
+# la qualité commence directement par un verbe narratif → pas une qualité
+_LEADING_VERB = re.compile(
+    r"^(?:imprime|impriment|explore|explorent|retrace|retracent|décrypte"
+    r"|décryptent|revient|reviennent|ensemble|nous|ils|il)\b")
+
+
+def _clean_quality(t):
+    t = " ".join(t.split())
+    t = re.sub(r"^(?:est\s+|,\s*|:\s*)", "", t)
+    t = _QUALITY_CUT.sub("", t)
+    t = t.strip(" ,.;:")
+    t = re.sub(r"\s+et$", "", t).strip()
+    return "" if _LEADING_VERB.match(t) else t
+
+
+def _is_name(s):
+    return (
+        3 <= len(s) <= 60 and ":" not in s and s[0].isupper()
+        and len(s.split()) >= 2
+    )
+
+
+def _extract_people(intro_long, title, text):
+    speakers, seen = [], set()
+
+    def add(name, quality=""):
+        name = name.strip(" ,.;:")
+        if _is_name(name) and name not in seen:
+            seen.add(name)
+            speakers.append({"name": name, "quality": quality[:220]})
+
+    # noms en <strong>/<b> : la qualité est le texte jusqu'au suivant
+    strongs = []
+    for st in (intro_long.select("strong, b") if intro_long else []):
+        name = " ".join(st.get_text().split())
+        bits = []
+        for sib in st.next_siblings:
+            if getattr(sib, "name", None) in ("strong", "b", "br", "p"):
+                break
+            bits.append(sib.get_text() if hasattr(sib, "get_text") else str(sib))
+        strongs.append((name, "".join(bits)))
+    quals = [_clean_quality(q) for _, q in strongs]
+    for i, q in enumerate(quals):
+        if q in ("et", "&") and i + 1 < len(quals):
+            quals[i] = quals[i + 1]  # « A et B, qualité commune »
+        elif q.startswith("et "):
+            # « A et l'historien B » : la qualité est partagée par la paire
+            shared = re.sub(
+                r"^(?:l['’]|le |la |les |un |une |des )", "",
+                q[3:].strip())
+            quals[i] = shared
+            if i + 1 < len(quals):
+                quals[i + 1] = shared
+    for (name, _), q in zip(strongs, quals):
+        add(name, q)
+
+    # repli : « X est qualité » directement dans le texte
+    if not speakers:
+        for m in re.finditer(rf"({_NAME})\s+est\s+([^.;\n]{{4,180}})", text):
+            add(m.group(1), _clean_quality(m.group(2)))
+
+    # repli : « … avec X » dans le titre
+    if not speakers:
+        m = re.search(r"avec\s+(.{3,50})$", title, re.I)
+        if m:
+            for nm in re.split(r"\s+et\s+|,", m.group(1)):
+                add(nm)
+
+    moderator = ""
+    for pat in (r"anim[ée]e?\s+par\s+(" + _NAME + ")",
+                r"présentée?\s+par\s+(" + _NAME + ")"):
+        m = re.search(pat, text)
+        if m:
+            moderator = m.group(1)
+            break
+    # l'animateur n'est pas un intervenant
+    if moderator:
+        speakers = [s for s in speakers if s["name"] != moderator]
+    return speakers, moderator

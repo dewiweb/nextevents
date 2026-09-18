@@ -96,6 +96,38 @@ a.link{color:#e3c2b7}
   </div>
 </div>
 
+<div class="card">
+  <label style="font-size:15px;color:#efeae6">Diapo du jour (auditorium)
+    — slide fixe sans visuel : titre, intervenants, animateur.</label>
+  <div class="row" style="margin-top:12px">
+    <label>Événement
+      <select id="t_ev" style="width:420px" onchange="prefillToday()">
+      </select></label>
+    <span class="status" id="t_status"></span>
+  </div>
+  <div class="row" style="align-items:flex-start;margin-top:14px">
+    <div style="flex:1;min-width:430px;display:flex;flex-direction:column;
+      gap:10px">
+      <label>Titre <input id="t_title" style="width:100%"></label>
+      <div id="t_speakers" style="display:flex;flex-direction:column;
+        gap:8px"></div>
+      <div class="row">
+        <button class="ghost" onclick="addSpeaker('','')">+ intervenant</button>
+        <label>Animé par <input id="t_mod" style="width:250px"></label>
+      </div>
+    </div>
+    <div style="flex:1;min-width:330px">
+      <label>Description détaillée (référence pour corriger les champs)</label>
+      <pre id="t_desc" style="max-height:330px;margin-top:6px"></pre>
+    </div>
+  </div>
+  <div class="row" style="margin-top:14px">
+    <button onclick="genToday()">Générer la diapo du jour</button>
+    <a class="link" href="/today/index.html" target="_blank">aperçu →</a>
+    <span class="status" id="t_gen"></span>
+  </div>
+</div>
+
 <div class="card"><div class="grid" id="grid"></div></div>
 
 <div class="card"><label>Journal</label><pre id="log">—</pre></div>
@@ -146,8 +178,61 @@ async function refresh(){
   document.getElementById('grid').innerHTML = s.slides.map(n =>
     `<a href="/slides/${n}" target="_blank"><img loading="lazy"
       src="/slides/${n}"><div class="caption">${n}</div></a>`).join('');
+  if (!document.getElementById('t_ev').options.length) loadTodayEvents();
 }
 async function run(){ await fetch('/api/run',{method:'POST'}); refresh(); }
+
+// ——— diapo du jour ———
+let todayEvents = [];
+async function loadTodayEvents(){
+  todayEvents = await (await fetch('/api/today/events')).json();
+  const sel = document.getElementById('t_ev');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">— choisir un événement —</option>' +
+    todayEvents.map(e => `<option value="${e.i}">${e.date} · ${e.tag} ·
+      ${e.title}</option>`).join('');
+  if (cur !== '') sel.value = cur;
+}
+function addSpeaker(name, qual){
+  const d = document.createElement('div');
+  d.className = 'row';
+  d.innerHTML =
+    `<input class="spk_name" placeholder="Nom Prénom" style="width:230px"
+      value="${name.replace(/"/g,'&quot;')}">
+     <input class="spk_qual" placeholder="Qualité (fonction, affiliation…)"
+      style="flex:1" value="${qual.replace(/"/g,'&quot;')}">
+     <button class="ghost" style="padding:6px 12px"
+      onclick="this.parentNode.remove()">×</button>`;
+  document.getElementById('t_speakers').appendChild(d);
+}
+async function prefillToday(){
+  const i = document.getElementById('t_ev').value;
+  if (i === '') return;
+  const e = await (await fetch('/api/today/event/'+i)).json();
+  document.getElementById('t_title').value = e.title || '';
+  document.getElementById('t_mod').value = e.moderator || '';
+  document.getElementById('t_speakers').innerHTML = '';
+  (e.speakers||[]).forEach(s => addSpeaker(s.name||'', s.quality||''));
+  if (!(e.speakers||[]).length) addSpeaker('','');
+  document.getElementById('t_desc').textContent =
+    e.desc_long || e.desc || '—';
+}
+async function genToday(){
+  const el = document.getElementById('t_gen');
+  el.textContent = 'génération…';
+  const ev = todayEvents.find(e => e.i == t_ev.value) || {};
+  const speakers = [...document.querySelectorAll('#t_speakers .row')]
+    .map(r => ({name: r.querySelector('.spk_name').value,
+                quality: r.querySelector('.spk_qual').value}))
+    .filter(s => s.name.trim());
+  const r = await (await fetch('/api/today',{method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({
+      title:t_title.value, moderator:t_mod.value, speakers,
+      tag:ev.tag||'', color:ev.color||null})})).json();
+  el.textContent = r.ok ? 'générée ✓ envoyée sur le partage'
+    : 'générée — envoi : '+(r.errors||[]).join(' ; ');
+}
 async function save(){
   await fetch('/api/settings',{method:'POST',
     headers:{'Content-Type':'application/json'},

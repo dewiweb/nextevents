@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<!--
+  Layout de la « diapo du jour » nextevents (1920×1080) : affichée en
+  direct pendant une rencontre à l'auditorium. Version sombre de la
+  charte (encre #141414, texte #efeae6) — pas de visuel : titre,
+  intervenants et leurs qualités, animateur.
+  Rempli par nextevents/today.py via string.Template — variables :
+    $font_regular/$font_medium  fontes Oldschool Grotesk (base64 woff2)
+    $accent                     pastel de la card (pastille + filets)
+    $light / $muted / $faint    texte principal / secondaire / discret
+    $tag                        pastille catégorie (Rencontre/…)
+    $h1_size                    taille du titre selon sa longueur
+    $title                      titre (échappé HTML)
+    $speakers_html              blocs intervenant : nom + qualité
+    $moderator_html             ligne « animé par … » (ou vide)
+    $logo_mark                  logo Champs Libres (SVG inline)
+-->
+<html lang="fr"><head><meta charset="utf-8">
+<style>
+@font-face{font-family:'Oldschool Grotesk';font-weight:400;
+ src:url(data:font/woff2;base64,$font_regular) format('woff2')}
+@font-face{font-family:'Oldschool Grotesk';font-weight:500;
+ src:url(data:font/woff2;base64,$font_medium) format('woff2')}
+*{margin:0;box-sizing:border-box}
+html,body{width:1920px;height:1080px;overflow:hidden}
+body{font-family:'Oldschool Grotesk',Arial,sans-serif;color:$light;
+ background:#000;display:flex;flex-direction:column}
+.card{position:relative;flex:1;background:#141414;border-radius:72px;
+ overflow:hidden;display:flex;flex-direction:column;
+ padding:70px 90px 110px}
+.tag{align-self:flex-start;background:$accent;color:#141414;
+ border-radius:2em;padding:12px 36px;font-size:30px;font-weight:500}
+h1{font-size:80px;font-weight:500;line-height:1.08;letter-spacing:-.01em;
+ margin-top:36px;display:-webkit-box;-webkit-line-clamp:3;
+ -webkit-box-orient:vertical;overflow:hidden}
+.rule{height:3px;background:$accent;border-radius:2px;margin-top:52px;
+ width:180px}
+.spk-label{margin-top:40px;font-size:26px;font-weight:500;
+ letter-spacing:.14em;text-transform:uppercase;color:$muted}
+.speakers{margin-top:30px;display:flex;flex-direction:column;gap:34px;
+ min-height:0;overflow:hidden}
+.speaker{display:flex;flex-direction:column;gap:2px}
+.speaker .name{font-size:56px;font-weight:500}
+.speaker .qual{font-size:32px;line-height:1.32;color:$muted;
+ max-width:1500px}
+.mod{margin-top:auto;padding-top:36px;font-size:34px;color:$faint;
+ border-top:1px solid rgba(239,234,230,.12)}
+.mod b{font-weight:500;color:$light}
+.attrib{position:absolute;right:44px;bottom:30px;font-size:19px;
+ color:rgba(239,234,230,.4);display:flex;align-items:center;gap:10px}
+.attrib svg{height:26px;width:auto}
+</style></head><body>
+<div class="card">
+  <span class="tag">$tag</span>
+  <h1 style="font-size:${h1_size}px">$title</h1>
+  <div class="rule"></div>
+  <div class="spk-label">$speakers_label</div>
+  <div class="speakers">$speakers_html</div>
+  $moderator_html
+  <div class="attrib">$logo_mark © Les Champs Libres — leschampslibres.fr — CC BY-SA</div>
+</div>
+</body></html>
