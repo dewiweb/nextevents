@@ -80,6 +80,16 @@ sous-dossier `today/`. Corriger et régénérer écrase les fichiers
 distants. Gabarit : **`assets/today_template.html`** (1920×1080,
 autonome).
 
+**Séries** (ex. *Les grands témoins*) : `scrape.py` marque les
+événements appartenant à une série éditoriale du site (page
+`/au-programme/<slug>` + bloc « En savoir plus » des pages détail).
+La diapo du jour bascule alors sur le **modèle com transposé en
+sombre** : rond marine à gauche (nom de la série + logo), fond bleu
+nuit, titre majuscule — composition centrée conservée. Une seconde
+slide **`today/qr.html` / `qr.png`** est générée en plus : QR code vers
+la page de la série (gabarit `assets/today_qr_template.html`). Ajouter
+une série = une ligne dans `SERIES` (`nextevents/scrape.py`).
+
 ## Déploiement Docker
 
 Voir **[DEPLOY.md](DEPLOY.md)**. Version courte :

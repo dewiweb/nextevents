@@ -3,7 +3,9 @@ rencontre à l'auditorium (titre + intervenants + animateur). Générée à la
 demande depuis la webui dans today/index.html, puis poussée vers le
 partage SMB / FTP configuré."""
 
+import base64
 import html
+import io
 import re
 from pathlib import Path
 from string import Template
@@ -11,9 +13,10 @@ from string import Template
 from .media import ensure_fonts
 from .paths import ASSET_DIR
 from .settings import OUT_DIR
-from .scrape import CARD_COLORS
+from .scrape import BASE, CARD_COLORS, SERIES
 
 _TEMPLATE = None
+_TEMPLATE_QR = None
 
 
 def _template():
@@ -23,6 +26,15 @@ def _template():
             (ASSET_DIR / "today_template.html").read_text(encoding="utf-8")
         )
     return _TEMPLATE
+
+
+def _template_qr():
+    global _TEMPLATE_QR
+    if _TEMPLATE_QR is None:
+        _TEMPLATE_QR = Template(
+            (ASSET_DIR / "today_qr_template.html").read_text("utf-8")
+        )
+    return _TEMPLATE_QR
 
 
 def today_html(data, fonts):
@@ -113,25 +125,70 @@ def today_html(data, fonts):
     )
 
 
+def qr_html(series, bg, fonts):
+    """Slide QR d'une série (modèle com : « Retrouvez … en scannant le
+    QR code ») — même fond sombre que la diapo du jour."""
+    slug = next((s for s, l in SERIES.items() if l == series), None)
+    url = f"{BASE}/au-programme/{slug}" if slug else f"{BASE}/au-programme"
+    import qrcode
+    qr = qrcode.QRCode(border=0, box_size=18)
+    qr.add_data(url)
+    qr.make()
+    img = qr.make_image(fill_color="#16203f", back_color="#ffffff")
+    buf = io.BytesIO()
+    img.convert("RGB").save(buf, "PNG")
+    logo = ASSET_DIR / "logo-mark.svg"
+    return _template_qr().substitute(
+        font_regular=fonts["regular"],
+        font_medium=fonts["medium"],
+        bg=bg,
+        sentence=html.escape(
+            f"Retrouvez {series} à venir et le Mag des Champs Libres "
+            "en scannant le QR code"),
+        qr_data="data:image/png;base64," + base64.b64encode(
+            buf.getvalue()).decode(),
+        logo_mark=logo.read_text("utf-8") if logo.exists() else "",
+    )
+
+
 def write_today(data, out_dir=None):
-    """Écrit today/index.html et renvoie son chemin."""
+    """Écrit today/index.html (+ today/qr.html si l'événement appartient
+    à une série) et renvoie le chemin de l'index."""
     out = Path(out_dir) if out_dir else OUT_DIR
     d = out / "today"
     d.mkdir(parents=True, exist_ok=True)
     dest = d / "index.html"
-    dest.write_text(today_html(data, ensure_fonts()), encoding="utf-8")
+    series = (data.get("series") or "").strip()
+    bg = data.get("bg") or ("#16203f" if series else "#141414")
+    fonts = ensure_fonts()
+    dest.write_text(today_html(data, fonts), encoding="utf-8")
+    if series:
+        (d / "qr.html").write_text(
+            qr_html(series, bg, fonts), encoding="utf-8")
+    else:
+        # pas de série : pas de slide QR — on supprime les restes d'une
+        # éventuelle génération précédente
+        for f in ("qr.html", "qr.png"):
+            p = d / f
+            if p.exists():
+                p.unlink()
     return dest
 
 
 def render_today_png(size, out_dir=None):
-    """Rend today/index.html en today/index.png à la résolution `size`
-    (même réglage que les autres diapos). Renvoie le chemin du PNG."""
+    """Rend today/index.html en today/index.png (+ qr.html → qr.png si
+    présent) à la résolution `size` (même réglage que les autres
+    diapos). Renvoie le chemin du PNG principal."""
     from .slide import render_all
 
     out = Path(out_dir) if out_dir else OUT_DIR
     src = out / "today" / "index.html"
     png = out / "today" / "index.png"
-    list(render_all([(src, png)], size=size))
+    jobs = [(src, png)]
+    qr_src = out / "today" / "qr.html"
+    if qr_src.exists():
+        jobs.append((qr_src, out / "today" / "qr.png"))
+    list(render_all(jobs, size=size))
     if not png.exists():
         raise RuntimeError("rendu de la diapo du jour impossible")
     return png
