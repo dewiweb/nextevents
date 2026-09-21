@@ -10,7 +10,10 @@
     $accent                     pastel de la card (pastille + filets)
     $bg                         fond sombre (choisi dans la webui)
     $light / $muted / $faint    texte principal / secondaire / discret
-    $tag                        pastille catégorie (Rencontre/…)
+    $variant                    « gt » si événement de série (grands
+                                témoins…) : modèle com transposé en
+                                sombre — rond marine, titre majuscule
+    $badge_html                 pastille catégorie ou rond de série
     $h1_size                    taille du titre selon sa longueur
     $title                      titre (échappé HTML)
     $speakers_label             « Avec » (vide si pas d'intervenant)
@@ -60,14 +63,31 @@ h1{font-size:80px;font-weight:500;line-height:1.08;letter-spacing:-.01em;
 .note-line{margin-top:10px;font-size:24px;color:$muted}
 .access-line{margin-top:10px;font-size:24px;color:$faint}
 .access-line::before{content:"◦ "}
+/* variante série (modèle com « Grands témoins » en sombre) :
+   rond marine, titre clair majuscule — composition centrée conservée */
+.gt-badge{flex:0 0 auto;align-self:flex-start;width:250px;height:250px;
+ border-radius:50%;background:#3357a3;color:#fff;display:flex;
+ flex-direction:column;align-items:center;justify-content:center;gap:10px}
+.gt-name{font-size:36px;font-weight:500;line-height:1.14;
+ text-transform:uppercase;letter-spacing:.02em;padding:0 26px}
+.gt-logo{color:rgba(255,255,255,.85);display:flex}
+.gt-logo svg{height:32px;width:auto}
+.card.gt h1{color:#eef3fb;text-transform:uppercase}
+.card.gt .rule{background:#a8bce0}
+.card.gt .spk-label{color:#7f93b8}
+.card.gt .speaker .name{color:#a8bce0}
+.card.gt .speaker .qual{color:#7f93b8}
+.card.gt .mod{color:#8aa0c8;border-top-color:rgba(159,180,216,.25)}
+.card.gt .mod-line b{color:#c9d6ee}
+.card.gt .attrib{color:rgba(200,214,238,.45)}
 .attrib{position:absolute;right:44px;bottom:30px;font-size:19px;
  color:rgba(239,234,230,.4);display:flex;align-items:center;gap:10px}
 .attrib svg{height:26px;width:auto}
 </style></head><body>
-<div class="card">
+<div class="card$variant">
   <div class="watermark watermark--tr">$logo_mark</div>
   <div class="watermark watermark--bl">$logo_mark</div>
-  <span class="tag">$tag</span>
+  $badge_html
   <h1 style="font-size:${h1_size}px">$title</h1>
   <div class="rule"></div>
   <div class="middle">

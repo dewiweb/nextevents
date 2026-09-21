@@ -31,6 +31,12 @@ CARD_COLORS = {
     "blue":    ("#e2dff0", "#beb7e1"),  # pale-blue / pale-blue-600
 }
 
+# Séries éditoriales du site : slug de la page série -> libellé.
+# La page série (/au-programme/<slug>) liste les événements membres ;
+# les pages détail portent parfois un bloc « En savoir plus » vers la
+# série — double canal, la page série est la source exhaustive.
+SERIES = {"les-grands-temoins": "Les grands témoins"}
+
 SPEC_ICONS = {"Date": "calendar", "Durée": "timer", "Lieu": "pin",
               "Tarif": "ticket", "Public": "group",
               "Accessibilité": "accessibility"}
@@ -206,6 +212,16 @@ def parse_detail(ev):
             if label and label not in ev["specs"]:
                 ev["specs"][label] = " ".join(text.get_text().split())
 
+    # appartenance à une série : bloc richtext « En savoir plus » vers
+    # /au-programme/<slug> ou <h2> au nom de la série (présent sur une
+    # partie seulement des pages — mark_series complète via la page série)
+    for slug, label in SERIES.items():
+        if soup.find("a", href=re.compile(rf"/{slug}\b")) or soup.find(
+                lambda t: t.name == "h2"
+                and label.lower() in t.get_text().lower()):
+            ev["series"] = label
+            break
+
     # bloc « Destiné à … / Accessibilité » : le site reflète les champs
     # OpenAgenda (publics / accessibility) — extraction directe, sans
     # requête supplémentaire
@@ -252,6 +268,22 @@ def _extract_access(text):
         if pat.search(text) and label not in out:
             out.append(label)
     return "\n".join(out)
+
+
+def mark_series(events):
+    """Marque ev['series'] d'après les pages séries du site — source
+    exhaustive (toutes les pages détail ne portent pas le bloc série)."""
+    for slug, label in SERIES.items():
+        try:
+            html_text = get(f"{BASE}/au-programme/{slug}").text
+        except Exception as e:
+            print(f"  ! page série {slug} KO : {e}")
+            continue
+        ids = set(re.findall(r"/au-programme/[^\"'<>]+/(\d+)", html_text))
+        for ev in events:
+            m = re.search(r"/(\d+)/?$", ev.get("url") or "")
+            if m and m.group(1) in ids:
+                ev["series"] = label
 
 
 # ——— extraction best-effort des intervenants / animateurs ———

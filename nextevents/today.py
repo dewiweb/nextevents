@@ -27,12 +27,18 @@ def _template():
 
 def today_html(data, fonts):
     """data : {title, tag, color, bg, speakers[{name, quality}],
-    moderator}. Renvoie le HTML autonome (fontes embarquées), version
-    sombre de la charte : fond sombre, texte clair, pastel en accent."""
+    moderator, series}. Renvoie le HTML autonome (fontes embarquées),
+    version sombre de la charte : fond sombre, texte clair, pastel en
+    accent. Si `series` est renseigné (ex. « Les grands témoins »), le
+    modèle com de la série est transposé en sombre : rond marine,
+    titre majuscule, composition à gauche."""
     accent = CARD_COLORS.get(data.get("color"), CARD_COLORS[None])[0]
-    bg = data.get("bg") or "#141414"
+    series = (data.get("series") or "").strip()
+    # série (ex. Les grands témoins) : modèle com transposé en sombre —
+    # fond bleu nuit, rond marine, titre clair majuscule
+    bg = data.get("bg") or ("#16203f" if series else "#141414")
     if not re.fullmatch(r"#[0-9a-fA-F]{6}", bg):
-        bg = "#141414"
+        bg = "#16203f" if series else "#141414"
     speakers_html = "".join(
         f'<div class="speaker"><span class="name">{html.escape(s["name"])}</span>'
         + (f'<span class="qual">{html.escape(s["quality"])}</span>'
@@ -70,6 +76,19 @@ def today_html(data, fonts):
         if footer_bits else ""
     )
     logo = ASSET_DIR / "logo-mark.svg"
+    logo_full = ASSET_DIR / "logo-full.svg"
+    if series:
+        badge_html = (
+            f'<div class="gt-badge"><span class="gt-name">'
+            f'{html.escape(series)}</span><span class="gt-logo">'
+            f'{logo_full.read_text("utf-8") if logo_full.exists() else ""}'
+            "</span></div>"
+        )
+    else:
+        badge_html = (
+            f'<span class="tag">'
+            f'{html.escape(data.get("tag") or "Événement")}</span>'
+        )
     title = data.get("title", "")
     # espace insécable avant la ponctuation double : évite un « ? »
     # orphelin en fin de ligne et respecte la typographie française
@@ -83,7 +102,8 @@ def today_html(data, fonts):
         light="#efeae6",
         muted="#8f8c8a",
         faint="#bfbbb8",
-        tag=html.escape(data.get("tag") or "Événement"),
+        variant=" gt" if series else "",
+        badge_html=badge_html,
         h1_size=80 if n < 42 else 64 if n < 80 else 52,
         title=title_esc,
         speakers_label="Avec" if speakers_html else "",

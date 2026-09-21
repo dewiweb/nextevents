@@ -27,7 +27,12 @@ body{font-family:'Oldschool Grotesk',Arial,sans-serif;color:$ink;
  background:#000;display:flex;flex-direction:column}
 .card{position:relative;flex:1;background:$bg;border-radius:72px;
  overflow:hidden;display:flex;flex-direction:column}
-main{flex:1;display:flex;gap:70px;padding:54px 64px;min-height:0}
+.watermark{position:absolute;z-index:0;color:rgba(255,255,255,.35)}
+.watermark svg{display:block;width:820px;height:820px}
+.watermark--tr{top:-260px;right:-260px}
+.watermark--bl{bottom:-260px;left:-260px}
+main{position:relative;flex:1;display:flex;gap:70px;padding:54px 64px;
+ min-height:0}
 .left{flex:0 0 780px;position:relative;min-height:0}
 .photo{position:absolute;inset:0;width:100%;height:100%;
  object-fit:cover;border-radius:48px;display:block;background:$dark}
@@ -61,6 +66,8 @@ h1{font-size:80px;font-weight:500;line-height:1.06;letter-spacing:-.01em;
 .attrib svg{height:26px;width:auto}
 </style></head><body>
 <div class="card">
+<div class="watermark watermark--tr">$logo_mark</div>
+<div class="watermark watermark--bl">$logo_mark</div>
 <main>
   <div class="left">
     $media

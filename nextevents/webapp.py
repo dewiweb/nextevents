@@ -124,6 +124,7 @@ def api_today_events():
             "i": i, "title": e["title"], "tag": e.get("tag"),
             "date": e.get("specs", {}).get("Date", ""),
             "lieu": e.get("specs", {}).get("Lieu", ""),
+            "series": e.get("series", ""),
         }
         for i, e in enumerate(_events_meta())
     ])
@@ -143,6 +144,7 @@ def api_today_event(i):
         note=e.get("note", ""),
         audience=e.get("audience", ""), access=e.get("access", ""),
         access_venue=e.get("access_venue", []),
+        series=e.get("series", ""),
     )
 
 
@@ -173,6 +175,7 @@ def api_today():
         "moderator": str(body.get("moderator") or "").strip(),
         "note": str(body.get("note") or "").strip(),
         "access": str(body.get("access") or "").strip(),
+        "series": str(body.get("series") or "").strip(),
     }
     if not data["title"]:
         return jsonify(ok=False, errors=["titre vide"]), 400

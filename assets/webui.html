@@ -105,6 +105,7 @@ a.link{color:#e3c2b7}
     <label>Événement
       <select id="t_ev" style="width:420px" onchange="prefillToday()">
       </select></label>
+    <span class="status" id="t_series" style="color:#a8bce0"></span>
     <span class="status" id="t_status"></span>
   </div>
   <div class="row" style="align-items:flex-start;margin-top:14px">
@@ -201,7 +202,7 @@ async function run(){ await fetch('/api/run',{method:'POST'}); refresh(); }
 const BG_CHOICES = [
   ['#141414','Encre'],['#302f2e','Anthracite'],['#363129','Jaune nuit'],
   ['#2b2e2c','Vert nuit'],['#312a28','Terre nuit'],['#313134','Bleu nuit'],
-  ['#3d1813','Rouge nuit']];
+  ['#3d1813','Rouge nuit'],['#16203f','Marine (séries)']];
 let todayBg = BG_CHOICES[0][0];
 function buildBgPalette(){
   const box = document.getElementById('t_bg');
@@ -244,6 +245,9 @@ async function prefillToday(){
   const i = document.getElementById('t_ev').value;
   if (i === '') return;
   const e = await (await fetch('/api/today/event/'+i)).json();
+  document.getElementById('t_series').textContent =
+    e.series ? 'Série : '+e.series+' — modèle com appliqué' : '';
+  if (e.series) { todayBg = '#16203f'; buildBgPalette(); }
   document.getElementById('t_title').value = e.title || '';
   document.getElementById('t_mod').value = e.moderator || '';
   document.getElementById('t_note').value = e.note || '';
@@ -270,7 +274,8 @@ async function genToday(){
     body: JSON.stringify({
       title:t_title.value, moderator:t_mod.value, speakers,
       note:t_note.value, access:t_access.value,
-      tag:ev.tag||'', color:ev.color||null, bg:todayBg})})).json();
+      tag:ev.tag||'', color:ev.color||null, bg:todayBg,
+      series:ev.series||''})})).json();
   el.textContent = r.ok ? 'générée ✓ envoyée sur le partage'
     : 'générée — envoi : '+(r.errors||[]).join(' ; ');
 }

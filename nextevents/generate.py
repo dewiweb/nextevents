@@ -7,7 +7,7 @@ from PIL import Image
 
 from .media import download_image, ensure_fonts
 from .paths import OUT_DIR
-from .scrape import list_events, parse_detail
+from .scrape import list_events, mark_series, parse_detail
 from .slide import render_all, slide_html, slide_name, SIZES, DEFAULT_SIZE
 from .sync import sync_ftp, sync_smb
 
@@ -31,6 +31,7 @@ def generate(out_dir=None, max_events=0, pages=99, cfg=None, size=DEFAULT_SIZE):
     print("2/5 Pages de détail + images…")
     with ThreadPoolExecutor(max_workers=6) as ex:
         events = list(ex.map(lambda e: download_image(parse_detail(e)), events))
+    mark_series(events)
 
     # métadonnées pour la « diapo du jour » de la webui
     import json
@@ -50,6 +51,7 @@ def generate(out_dir=None, max_events=0, pages=99, cfg=None, size=DEFAULT_SIZE):
                     "audience": e.get("audience", ""),
                     "access": e.get("access", ""),
                     "access_venue": e.get("access_venue", []),
+                    "series": e.get("series", ""),
                 }
                 for e in events
             ],
