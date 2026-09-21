@@ -31,7 +31,8 @@ body{font-family:'Oldschool Grotesk',Arial,sans-serif;color:#efeae6;
 .qr-text{max-width:640px;font-size:46px;font-weight:500;
  line-height:1.4;color:#a8bce0;text-align:right}
 .qr-text b{color:#eef3fb;font-weight:500}
-.arrow{color:#a8bce0;flex:0 0 auto}
+.arrow{color:#a8bce0;flex:0 0 auto;align-self:flex-end;
+ margin:0 -55px 110px -50px}
 .qrbox{flex:0 0 auto;background:#fff;border-radius:36px;
  padding:36px;box-shadow:0 18px 60px rgba(0,0,0,.35)}
 .qrbox img{display:block;width:400px;height:400px}
@@ -44,10 +45,10 @@ body{font-family:'Oldschool Grotesk',Arial,sans-serif;color:#efeae6;
   <div class="watermark watermark--bl">$logo_mark</div>
   <div class="row">
     <div class="qr-text">$sentence</div>
-    <svg class="arrow" width="118" height="140" viewBox="0 0 118 140"
-      fill="none"><path d="M12 18 C 48 26, 72 50, 78 90 C 82 102, 97 109, 110 114"
+    <svg class="arrow" width="120" height="152" viewBox="0 0 120 152"
+      fill="none"><path d="M8 146 C 40 141, 68 121, 82 91 C 92 66, 100 26, 112 26"
       stroke="currentColor" stroke-width="11" stroke-linecap="round"/>
-      <path d="M79 123 L 110 114 L 94 86" stroke="currentColor"
+      <path d="M87 9 L 112 26 L 87 43" stroke="currentColor"
       stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/></svg>
     <div class="qrbox"><img src="$qr_data" alt="QR code"></div>
   </div>
