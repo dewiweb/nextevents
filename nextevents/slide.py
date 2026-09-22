@@ -3,6 +3,7 @@ capture Playwright/Chromium (repli firefox --headless)."""
 
 import html
 import io
+import os
 import re
 import subprocess
 import tempfile
@@ -205,7 +206,11 @@ def render_all(slides, size=DEFAULT_SIZE):
         return
 
     with sync_playwright() as p:
-        browser = p.chromium.launch()
+        # NEXTEVENTS_BROWSER_CHANNEL permet d'utiliser un navigateur
+        # système (ex. "msedge" pour l'app desktop — pas de téléchargement)
+        channel = os.environ.get("NEXTEVENTS_BROWSER_CHANNEL")
+        browser = p.chromium.launch(channel=channel) if channel \
+            else p.chromium.launch()
         page = browser.new_page(
             viewport={"width": dw, "height": dh},
             device_scale_factor=w / dw,
