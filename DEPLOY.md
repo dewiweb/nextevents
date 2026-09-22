@@ -147,3 +147,40 @@ d'aucun accès à Internet en dehors des domaines listés. Sans sortie
 SMB/FTP, l'app fonctionne quand même : les diapos sont alors récupérées
 via `GET /api/download` (zip) ou montage du volume `/data` sur la
 destination.
+
+## Sécurité — recommandations
+
+L'app est conçue pour un **réseau local de confiance** (régie). Elle
+n'a pas d'authentification ni de chiffrement intégrés — à cadrer avec
+les mesures d'infrastructure suivantes.
+
+### Modèle de menace
+
+- **UI/API sans auth** : tout poste joignant le port 8080 peut lancer
+  une génération, modifier les réglages et lire les diapos. Restreindre
+  l'accès au réseau régie/admin uniquement.
+- **Identifiants SMB/FTP en clair** dans `<volume>/settings.json` —
+  indispensables au fonctionnement. Protéger le volume `/data` (droits
+  hôte, accès SSH limité).
+- **HTTP en clair** : les identifiants saisis dans l'UI transitent non
+  chiffrés sur le LAN.
+
+### Recommandations
+
+| Mesure | Effort | Effet |
+|---|---|---|
+| **Firewall egress** : n'autoriser que `www.leschampslibres.fr`, `openagenda.com`, `img.openagenda.com` (443) + la destination SMB/FTP | config FW | même compromise, le container ne peut exfiltrer nulle part |
+| **ACL entrante** : port 8080 limité aux postes régie/admin (VLAN ou FW) | config FW | ferme l'UI au reste du réseau |
+| **Reverse proxy devant l'UI** (nginx/Traefik du SI : TLS + auth basic/SSO) | ~5 lignes côté SI | chiffrement + authentification sans toucher au code |
+| **Compte SMB dédié** en écriture limitée au seul dossier diaporama | config AD/NAS | le credential stocké ne peut rien faire d'autre |
+| **Volume `/data` à accès restreint** sur l'hôte | droits fs | protège `settings.json` |
+| **Mises à jour** : `git pull && docker build` périodique (§ Maintenance) | cron/manual | correctifs |
+
+Points rassurants à signaler : le rendu Chromium ne charge **que du
+HTML généré localement** (jamais de page distante) ; l'app ne collecte
+aucune donnée personnelle ; les mots de passe ne sont jamais renvoyés
+au navigateur ni inclus dans l'export zip.
+
+Si la politique SI exige une authentification applicative plutôt qu'un
+reverse proxy, c'est implémentable dans `webapp.py` — à signaler avant
+déploiement.
