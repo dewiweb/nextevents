@@ -34,20 +34,30 @@ pre{background:#141414;border:1px solid #302f2e;border-radius:10px;
  padding:14px;font-size:12.5px;max-height:300px;overflow:auto;
  white-space:pre-wrap;color:#bfbbb8}
 a.link{color:#e3c2b7}
+details.card>summary{list-style:none;cursor:pointer;font-size:15px;
+ color:#efeae6;display:flex;align-items:center;gap:10px;
+ user-select:none}
+details.card>summary::before{content:'▸';color:#8f8c8a;
+ transition:transform .15s}
+details.card[open]>summary::before{transform:rotate(90deg)}
+details.card>summary::-webkit-details-marker{display:none}
+details.card[open]>summary{margin-bottom:14px}
 </style></head><body>
 <h1><span class="dot">●</span> Nextevents</h1>
 <p class="sub">Diaporama OBS des événements des Champs Libres — PNG 16:9</p>
 
-<div class="card">
+<details class="card" id="sec_run" open>
+  <summary>Génération</summary>
   <div class="row">
     <button id="run" onclick="run()">Générer maintenant</button>
     <button class="ghost" onclick="window.location='/api/download'">
       Télécharger les diapos (.zip)</button>
     <span class="status" id="status">…</span>
   </div>
-</div>
+</details>
 
-<div class="card">
+<details class="card" id="sec_set" open>
+  <summary>Réglages</summary>
   <div class="row">
     <label>Rafraîchissement auto (heures, 0 = off)
       <input id="interval" type="number" min="0" step="1"></label>
@@ -74,9 +84,10 @@ a.link{color:#e3c2b7}
   reçoit (cases « Envoie : Paysage / Portrait ») — par défaut seul le
   paysage part ; le portrait est aussi récupérable via le .zip ou la
   galerie ci-dessous.</p>
-</div>
+</details>
 
-<div class="card">
+<details class="card" id="sec_ftp" open>
+  <summary>Destination FTP</summary>
   <div class="row">
     <label>Serveur FTP <input id="ftp_host" placeholder="nas.local"></label>
     <label>Port <input id="ftp_port" type="number" min="1" style="width:80px"></label>
@@ -97,9 +108,10 @@ a.link{color:#e3c2b7}
   </div>
   <p class="sub" style="margin:10px 0 0">Laisser « Serveur FTP » vide pour
   désactiver l'envoi. Les diapos sont aussi écrites dans le dossier local.</p>
-</div>
+</details>
 
-<div class="card">
+<details class="card" id="sec_smb" open>
+  <summary>Destination SMB</summary>
   <div class="row">
     <label>Hôte SMB (IP ou nom du poste OBS / NAS)
       <input id="smb_host" placeholder="192.168.1.20"></label>
@@ -117,12 +129,12 @@ a.link{color:#e3c2b7}
     <button class="ghost" onclick="testSmb()">Tester la connexion</button>
     <span class="status" id="smbtest"></span>
   </div>
-</div>
+</details>
 
-<div class="card">
-  <label style="font-size:15px;color:#efeae6">Diapo du jour (auditorium)
-    — slide fixe sans visuel : titre, intervenants, animateur.</label>
-  <div class="row" style="margin-top:12px">
+<details class="card" id="sec_today" open>
+  <summary>Diapo du jour (auditorium) — slide fixe sans visuel :
+    titre, intervenants, animateur</summary>
+  <div class="row">
     <label>Événement
       <select id="t_ev" style="width:420px" onchange="prefillToday()">
       </select></label>
@@ -163,21 +175,32 @@ a.link{color:#e3c2b7}
     <a class="link" href="/today/index.html" target="_blank">aperçu →</a>
     <span class="status" id="t_gen"></span>
   </div>
-</div>
+</details>
 
-<div class="card"><div class="grid" id="grid"></div></div>
+<details class="card" id="sec_ls" open>
+  <summary>Diapos paysage</summary>
+  <div class="grid" id="grid"></div>
+</details>
 
-<div class="card" id="card_p" style="display:none">
-  <label style="font-size:15px;color:#efeae6">Diapos portrait
-    (local — impression / écrans verticaux)</label>
+<details class="card" id="card_p" open style="display:none">
+  <summary>Diapos portrait (local — impression / écrans verticaux)</summary>
   <div class="grid" id="grid_p"
-    style="grid-template-columns:repeat(auto-fill,minmax(170px,1fr));
-      margin-top:12px"></div>
-</div>
+    style="grid-template-columns:repeat(auto-fill,minmax(170px,1fr))"></div>
+</details>
 
-<div class="card"><label>Journal</label><pre id="log">—</pre></div>
+<details class="card" id="sec_log" open>
+  <summary>Journal</summary>
+  <pre id="log">—</pre>
+</details>
 
 <script>
+// sections pliables : état persisté en localStorage
+document.querySelectorAll('details.card[id]').forEach(d => {
+  const k = 'sec_' + d.id;
+  if (localStorage[k] !== undefined) d.open = localStorage[k] === '1';
+  d.addEventListener('toggle',
+    () => localStorage[k] = d.open ? '1' : '0');
+});
 // champs en cours d'édition : ne pas les écraser au rafraîchissement auto
 const dirty = new Set();
 document.querySelectorAll('input,select').forEach(el => {
