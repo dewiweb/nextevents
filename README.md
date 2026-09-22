@@ -143,13 +143,20 @@ suivre l'avancement via `GET /api/status` (`running`, `log`).
 
 ```json
 {
-  "running": false, "last_run": "2026-09-22 10:31",
+  "running": false,
+  "last_run": 1758549000,
+  "last_run_iso": "2026-09-22T10:31:24",
   "last_error": null, "log": ["…"],
-  "slides": ["slide-….png"],
+  "slides": ["slide-….png"], "slides_count": 41,
   "settings": {"interval_hours": 24, "resolution": "uhd",
                "ftp_host": "…", "has_pass": true, "has_smb_pass": true}
 }
 ```
+
+`last_run` = timestamp Unix (float), `last_run_iso` = même instant en
+ISO 8601 (fuseau du container — penser à `-e TZ=Europe/Paris`),
+`slides_count` = nombre de diapos générées. Ce sont les champs à
+exploiter pour un feedback Companion.
 
 **`POST /api/settings`** — clés optionnelles, les absentes sont
 inchangées, `ftp_pass`/`smb_pass` vides = inchangés :

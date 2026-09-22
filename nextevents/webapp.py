@@ -2,6 +2,7 @@
 
 import io
 import threading
+from datetime import datetime
 
 from flask import Flask, jsonify, request, send_file, send_from_directory
 
@@ -29,12 +30,19 @@ def api_status():
     s = load_settings()
     has_pass = bool(s.pop("ftp_pass"))
     has_smb_pass = bool(s.pop("smb_pass"))
+    sl = slides()
+    lr = state["last_run"]
     return jsonify(
         running=state["running"],
-        last_run=state["last_run"],
+        last_run=lr,
+        last_run_iso=(
+            datetime.fromtimestamp(lr).isoformat(timespec="seconds")
+            if lr else None
+        ),
         last_error=state["last_error"],
         log=state["log"],
-        slides=slides(),
+        slides=sl,
+        slides_count=len(sl),
         settings={**s, "has_pass": has_pass, "has_smb_pass": has_smb_pass},
     )
 
