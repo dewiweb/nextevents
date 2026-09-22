@@ -178,6 +178,28 @@ ne sont téléchargées qu'une fois (`assets/cache/`) ; la synchro FTP/SMB
 n'envoie que les fichiers absents ou modifiés et vérifie le résultat
 contre le manifeste.
 
+## Porter vers un autre site
+
+Le pipeline (rendu HTML→PNG, webui, synchro SMB/FTP, diapo du jour)
+est générique. La bonne structure pour une adaptation est un **fork**
+du dépôt (charte et sélecteurs changent en bloc — une branche subirait
+des conflits permanents à chaque merge depuis `main`).
+
+Ce qui est **spécifique à leschampslibres.fr** :
+
+| À adapter | Contenu |
+|---|---|
+| `scrape.py` | `BASE`, `CATEGORIES` (slugs des pages catégorie), `CARD_COLORS` (modifieurs CSS du site), `SERIES`, et surtout les sélecteurs `parse_card`/`parse_detail` (classes `.v-event`, `.v-banner`, `.v-audience`…) |
+| `media.py` | `ensure_fonts()` (URLs des fontes du site) ; `openagenda_image()` est **réutilisable tel quel** pour tout site alimenté par OpenAgenda (page `openagenda.com/events/<uid>` → `og:image` HD) |
+| `assets/*_template.html` | charte graphique des trois gabarits (diapo, diapo du jour, QR série) |
+| `today.py` | libellés (« Animé(e) par »…), gabarits, URL du QR |
+
+`events.json` (consommé par la webui) attend par événement : `title`,
+`url`, `tag`, `color`, `specs` (dict libellé→valeur), `desc`,
+`desc_long`, `speakers` (`[{name, quality}]`), `moderator`, `note`,
+`audience`, `access`, `access_venue` (liste), `series`. Produire ce
+format depuis une autre source suffit à alimenter la webui.
+
 ## Licence
 
 Contenus du site leschampslibres.fr diffusés sous

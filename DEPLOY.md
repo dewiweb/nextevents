@@ -6,6 +6,8 @@ publie vers le poste OBS, via un partage réseau (NAS ou poste OBS).
 ## Prérequis
 
 - Serveur Debian avec **Docker** et **git** installés
+- Voir la **checklist réseau** en fin de document si le déploiement est
+  fait par une équipe SI sur son propre réseau
 - Cloner le dépôt privé sur le serveur :
 
   ```bash
@@ -125,3 +127,23 @@ Les réglages (`settings.json` dans `/data`) sont conservés.
 | Test FTP échoue | port 21 bloqué, ou le NAS exige FTPS → cocher la case |
 | UI inaccessible | `docker ps`, `docker logs nextevents`, port 8080 déjà pris → changer `-p 9080:8080` |
 | OBS ne voit pas les nouvelles diapos | vérifier que le lecteur réseau est monté et pointe sur le bon dossier |
+
+## Checklist réseau (déploiement par une équipe SI)
+
+Tout ce dont le container a besoin, à faire valider/ouvrir :
+
+| Besoin | Détail |
+|---|---|
+| **Sortie HTTPS (443)** | `www.leschampslibres.fr` (programme + fontes), `openagenda.com` et `img.openagenda.com` (images HD) |
+| **Sortie SMB (445)** ou **FTP (21)** | vers le poste OBS ou le NAS de destination — si utilisé |
+| **Port UI (8080)** | entrant, à restreindre au réseau régie/admin (pas d'authentification) |
+| **Volume persistant** | `/data` : diapos + `settings.json` (réglages, identifiants SMB/FTP **en clair** — protéger l'accès au volume) |
+| **Ressources** | ~1 vCPU, 1–2 Go RAM (rendu Chromium), ~2 Go disque (image + diapos + cache) |
+| **Timezone** | `-e TZ=Europe/Paris` sur le `docker run` — sinon le planificateur auto tourne en UTC |
+| **DNS** | résolution des noms ci-dessus |
+
+Le container n'a besoin d'**aucun** port entrant autre que l'UI et
+d'aucun accès à Internet en dehors des domaines listés. Sans sortie
+SMB/FTP, l'app fonctionne quand même : les diapos sont alors récupérées
+via `GET /api/download` (zip) ou montage du volume `/data` sur la
+destination.
