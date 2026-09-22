@@ -34,6 +34,7 @@ docker build -t nextevents .
 
 docker run -d --name nextevents --restart unless-stopped \
   -p 8080:8080 \
+  -e TZ=Europe/Paris \
   -v nextevents-data:/data \
   nextevents
 ```
@@ -113,7 +114,7 @@ cd nextevents && git pull \
   && docker build -t nextevents . \
   && docker rm -f nextevents \
   && docker run -d --name nextevents --restart unless-stopped \
-       -p 8080:8080 -v nextevents-data:/data nextevents
+       -p 8080:8080 -e TZ=Europe/Paris -v nextevents-data:/data nextevents
 ```
 
 Les réglages (`settings.json` dans `/data`) sont conservés.
@@ -139,7 +140,7 @@ Tout ce dont le container a besoin, à faire valider/ouvrir :
 | **Port UI (8080)** | entrant, à restreindre au réseau régie/admin (pas d'authentification) |
 | **Volume persistant** | `/data` : diapos + `settings.json` (réglages, identifiants SMB/FTP **en clair** — protéger l'accès au volume) |
 | **Ressources** | ~1 vCPU, 1–2 Go RAM (rendu Chromium), ~2 Go disque (image + diapos + cache) |
-| **Timezone** | `-e TZ=Europe/Paris` sur le `docker run` — sinon le planificateur auto tourne en UTC |
+| **Timezone** | `-e TZ=Europe/Paris` sur le `docker run` — sinon le planificateur auto et `last_run_iso` tournent en UTC |
 | **DNS** | résolution des noms ci-dessus |
 
 Le container n'a besoin d'**aucun** port entrant autre que l'UI et

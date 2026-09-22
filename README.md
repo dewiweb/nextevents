@@ -98,6 +98,7 @@ Voir **[DEPLOY.md](DEPLOY.md)**. Version courte :
 docker build -t nextevents .
 docker run -d --name nextevents --restart unless-stopped \
   -p 8080:8080 \
+  -e TZ=Europe/Paris \
   -v /mnt/nas/diaporama:/data \
   nextevents
 ```
