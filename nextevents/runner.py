@@ -36,7 +36,10 @@ def run_generation():
         state["last_error"] = str(e)
     finally:
         state["running"] = False
-        save_settings(load_settings())
+        last = state["last_run"]  # load_settings() réinjecterait
+        s = load_settings()       # l'ancienne valeur du fichier
+        state["last_run"] = last
+        save_settings(s)
 
 
 def scheduler():
