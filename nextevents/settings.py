@@ -22,11 +22,15 @@ DEFAULTS = {
     "ftp_pass": "",
     "ftp_path": "/",
     "ftp_tls": 0,
+    "ftp_send_landscape": 1,
+    "ftp_send_portrait": 0,
     "smb_host": "",
     "smb_share": "",
     "smb_path": "",
     "smb_user": "",
     "smb_pass": "",
+    "smb_send_landscape": 1,
+    "smb_send_portrait": 0,
 }
 
 # état runtime du serveur (génération en cours, journal, dernier run)

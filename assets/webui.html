@@ -70,8 +70,10 @@ a.link{color:#e3c2b7}
   <p class="sub" style="margin:10px 0 0">Changer de résolution re-rend
   toutes les diapos à la prochaine génération. Le layout portrait
   (ratio A4 : 1240×1754 en HD, 2480×3508 — 300 dpi — en UHD) est
-  écrit dans <code>portrait/</code> et n'est jamais envoyé sur les
-  partages — récupération via le .zip ou la galerie ci-dessous.</p>
+  écrit dans <code>portrait/</code>. Chaque partage choisit ce qu'il
+  reçoit (cases « Envoie : Paysage / Portrait ») — par défaut seul le
+  paysage part ; le portrait est aussi récupérable via le .zip ou la
+  galerie ci-dessous.</p>
 </div>
 
 <div class="card">
@@ -84,6 +86,11 @@ a.link{color:#e3c2b7}
       placeholder="(inchangé si vide)"></label>
     <label style="align-self:end"><input id="ftp_tls" type="checkbox"
       style="width:auto"> FTPS</label>
+    <label style="align-self:end;color:#8f8c8a">Envoie&nbsp;:</label>
+    <label style="align-self:end;color:#efeae6"><input id="ftp_ls"
+      type="checkbox" style="width:auto"> Paysage</label>
+    <label style="align-self:end;color:#efeae6"><input id="ftp_pt"
+      type="checkbox" style="width:auto"> Portrait</label>
     <button class="ghost" onclick="save()">Enregistrer</button>
     <button class="ghost" onclick="testFtp()">Tester la connexion</button>
     <span class="status" id="ftptest"></span>
@@ -101,6 +108,11 @@ a.link{color:#e3c2b7}
     <label>Utilisateur <input id="smb_user" placeholder="DOMAINE\user"></label>
     <label>Mot de passe <input id="smb_pass" type="password"
       placeholder="(inchangé si vide)"></label>
+    <label style="align-self:end;color:#8f8c8a">Envoie&nbsp;:</label>
+    <label style="align-self:end;color:#efeae6"><input id="smb_ls"
+      type="checkbox" style="width:auto"> Paysage</label>
+    <label style="align-self:end;color:#efeae6"><input id="smb_pt"
+      type="checkbox" style="width:auto"> Portrait</label>
     <button class="ghost" onclick="save()">Enregistrer</button>
     <button class="ghost" onclick="testSmb()">Tester la connexion</button>
     <span class="status" id="smbtest"></span>
@@ -194,12 +206,16 @@ async function refresh(){
   setVal('ftp_path', s.settings.ftp_path);
   setVal('ftp_user', s.settings.ftp_user);
   setChecked('ftp_tls', s.settings.ftp_tls);
+  setChecked('ftp_ls', s.settings.ftp_send_landscape);
+  setChecked('ftp_pt', s.settings.ftp_send_portrait);
   document.getElementById('ftp_pass').placeholder =
     s.settings.has_pass ? '(enregistré — vide = inchangé)' : '(non défini)';
   setVal('smb_host', s.settings.smb_host);
   setVal('smb_share', s.settings.smb_share);
   setVal('smb_path', s.settings.smb_path);
   setVal('smb_user', s.settings.smb_user);
+  setChecked('smb_ls', s.settings.smb_send_landscape);
+  setChecked('smb_pt', s.settings.smb_send_portrait);
   document.getElementById('smb_pass').placeholder =
     s.settings.has_smb_pass ? '(enregistré — vide = inchangé)' : '(non défini)';
   const el = document.getElementById('status');
@@ -315,9 +331,13 @@ async function save(){
       ftp_host:ftp_host.value, ftp_port:+ftp_port.value,
       ftp_path:ftp_path.value, ftp_user:ftp_user.value,
       ftp_pass:ftp_pass.value, ftp_tls:ftp_tls.checked?1:0,
+      ftp_send_landscape:ftp_ls.checked?1:0,
+      ftp_send_portrait:ftp_pt.checked?1:0,
       smb_host:smb_host.value, smb_share:smb_share.value,
       smb_path:smb_path.value, smb_user:smb_user.value,
-      smb_pass:smb_pass.value})});
+      smb_pass:smb_pass.value,
+      smb_send_landscape:smb_ls.checked?1:0,
+      smb_send_portrait:smb_pt.checked?1:0})});
   dirty.clear();
   document.getElementById('saved').textContent = 'enregistré ✓';
   setTimeout(()=>document.getElementById('saved').textContent='',2000);

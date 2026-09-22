@@ -66,11 +66,14 @@ générés » coche **Paysage** et/ou **Portrait** ; en CLI, `--portrait`
 ajoute le format portrait au rendu paysage.
 
 Les PNG portrait sont écrits dans `<out>/portrait/` (avec leur propre
-`html/` et `manifest.txt`). **Ce sous-dossier n'est jamais poussé par
-les synchros FTP/SMB** — les partages ne reçoivent que le paysage.
-Récupération via le .zip (`/api/download`, qui inclut `portrait/`), la
-galerie webui ou `/slides/portrait/<nom>`. Les deux jeux peuvent
-cohabiter : chacun a son dossier, son cache et son nettoyage.
+`html/` et `manifest.txt`). **Chaque destination (FTP, SMB) choisit ce
+qu'elle reçoit** : cases « Envoie : Paysage / Portrait » dans la webui
+(`ftp_send_landscape`/`ftp_send_portrait`, idem `smb_*`). Par défaut
+seul le paysage part ; cocher « Portrait » pousse le jeu dans un
+sous-dossier `portrait/` distant. Sinon récupération via le .zip
+(`/api/download`, qui inclut `portrait/`), la galerie webui ou
+`/slides/portrait/<nom>`. Les deux jeux cohabitent : chacun a son
+dossier, son cache et son nettoyage.
 
 ## Diapo du jour (auditorium)
 
