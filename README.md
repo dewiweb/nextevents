@@ -131,6 +131,53 @@ recharge automatiquement le dossier.
 | `POST /api/today` | génère `today/index.html` + envoi SMB/FTP |
 | `GET /today/index.html` | aperçu de la diapo du jour |
 
+### Payloads (pour Bitfocus Companion « generic-http » et similaires)
+
+Toutes les réponses sont du JSON. `POST` accepte un body JSON
+(`Content-Type: application/json`) — corps vide ou `{}` toléré.
+
+**`POST /api/run`** — aucun body. Lance la génération en arrière-plan ;
+suivre l'avancement via `GET /api/status` (`running`, `log`).
+
+**`GET /api/status`** →
+
+```json
+{
+  "running": false, "last_run": "2026-09-22 10:31",
+  "last_error": null, "log": ["…"],
+  "slides": ["slide-….png"],
+  "settings": {"interval_hours": 24, "resolution": "uhd",
+               "ftp_host": "…", "has_pass": true, "has_smb_pass": true}
+}
+```
+
+**`POST /api/settings`** — clés optionnelles, les absentes sont
+inchangées, `ftp_pass`/`smb_pass` vides = inchangés :
+
+```json
+{"interval_hours": 24, "max_events": 0, "resolution": "uhd",
+ "ftp_host": "", "ftp_port": 21, "ftp_user": "", "ftp_pass": "",
+ "ftp_path": "/", "ftp_tls": 0,
+ "smb_host": "", "smb_share": "", "smb_path": "",
+ "smb_user": "", "smb_pass": ""}
+```
+
+**`POST /api/today`** — génère la diapo du jour (+ `qr.png` si
+`series` non vide) et pousse vers SMB/FTP :
+
+```json
+{"title": "Titre de la rencontre", "tag": "Rencontre",
+ "color": null, "bg": "#141414",
+ "date": "22/09/26 à 20h30", "lieu": "Auditorium",
+ "speakers": [{"name": "Prénom Nom", "quality": "Qualité"}],
+ "moderator": "Prénom Nom", "note": "Suivi d'une dédicace…",
+ "access": "Interprétation en LSF", "series": "Les grands témoins"}
+```
+
+Réponse : `{"ok": true}` ou `{"ok": false, "errors": ["…"]}`.
+`bg` vide = choix auto (marine si série, encre sinon) ; `series`
+déclenche le modèle « Grands témoins ».
+
 ## Envoi FTP / SMB (optionnel)
 
 L'UI permet de pousser les diapos après chaque génération :
