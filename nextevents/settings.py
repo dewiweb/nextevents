@@ -14,6 +14,8 @@ DEFAULTS = {
     "interval_hours": 0,
     "max_events": 0,
     "resolution": "uhd",
+    "gen_landscape": 1,
+    "gen_portrait": 0,
     "ftp_host": "",
     "ftp_port": 21,
     "ftp_user": "",

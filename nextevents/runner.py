@@ -65,3 +65,11 @@ def slides():
     if not OUT_DIR.exists():
         return []
     return sorted(p.name for p in OUT_DIR.glob("*.png"))
+
+
+def slides_portrait():
+    """Diapos portrait (sous-dossier, non poussées par les synchros)."""
+    d = OUT_DIR / "portrait"
+    if not d.exists():
+        return []
+    return sorted(p.name for p in d.glob("*.png"))

@@ -58,11 +58,20 @@ a.link{color:#e3c2b7}
         <option value="uhd">UHD 3840×2160</option>
         <option value="hd">HD 1920×1080</option>
       </select></label>
+    <label>Layouts générés</label>
+    <label style="color:#efeae6"><input id="gen_ls" type="checkbox"
+      style="width:auto"> Paysage — poussé vers les partages</label>
+    <label style="color:#efeae6"><input id="gen_pt" type="checkbox"
+      style="width:auto"> Portrait — local seulement
+      (portrait/, zip)</label>
     <button class="ghost" onclick="save()">Enregistrer</button>
     <span class="status" id="saved"></span>
   </div>
   <p class="sub" style="margin:10px 0 0">Changer de résolution re-rend
-  toutes les diapos à la prochaine génération.</p>
+  toutes les diapos à la prochaine génération. Le layout portrait
+  (ratio A4 : 1240×1754 en HD, 2480×3508 — 300 dpi — en UHD) est
+  écrit dans <code>portrait/</code> et n'est jamais envoyé sur les
+  partages — récupération via le .zip ou la galerie ci-dessous.</p>
 </div>
 
 <div class="card">
@@ -146,6 +155,14 @@ a.link{color:#e3c2b7}
 
 <div class="card"><div class="grid" id="grid"></div></div>
 
+<div class="card" id="card_p" style="display:none">
+  <label style="font-size:15px;color:#efeae6">Diapos portrait
+    (local — impression / écrans verticaux)</label>
+  <div class="grid" id="grid_p"
+    style="grid-template-columns:repeat(auto-fill,minmax(170px,1fr));
+      margin-top:12px"></div>
+</div>
+
 <div class="card"><label>Journal</label><pre id="log">—</pre></div>
 
 <script>
@@ -170,6 +187,8 @@ async function refresh(){
   setVal('interval', s.settings.interval_hours);
   setVal('maxev', s.settings.max_events);
   setVal('res', s.settings.resolution);
+  setChecked('gen_ls', s.settings.gen_landscape);
+  setChecked('gen_pt', s.settings.gen_portrait);
   setVal('ftp_host', s.settings.ftp_host);
   setVal('ftp_port', s.settings.ftp_port);
   setVal('ftp_path', s.settings.ftp_path);
@@ -194,6 +213,13 @@ async function refresh(){
   document.getElementById('grid').innerHTML = s.slides.map(n =>
     `<a href="/slides/${n}" target="_blank"><img loading="lazy"
       src="/slides/${n}"><div class="caption">${n}</div></a>`).join('');
+  const sp = s.slides_portrait || [];
+  document.getElementById('card_p').style.display =
+    sp.length ? '' : 'none';
+  document.getElementById('grid_p').innerHTML = sp.map(n =>
+    `<a href="/slides/portrait/${n}" target="_blank"><img loading="lazy"
+      src="/slides/portrait/${n}"><div class="caption">${n}</div></a>`
+    ).join('');
   if (!document.getElementById('t_ev').options.length) loadTodayEvents();
 }
 async function run(){ await fetch('/api/run',{method:'POST'}); refresh(); }
@@ -285,6 +311,7 @@ async function save(){
     body:JSON.stringify({
       interval_hours:+interval.value, max_events:+maxev.value,
       resolution:res.value,
+      gen_landscape:gen_ls.checked?1:0, gen_portrait:gen_pt.checked?1:0,
       ftp_host:ftp_host.value, ftp_port:+ftp_port.value,
       ftp_path:ftp_path.value, ftp_user:ftp_user.value,
       ftp_pass:ftp_pass.value, ftp_tls:ftp_tls.checked?1:0,

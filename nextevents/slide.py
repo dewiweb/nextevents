@@ -32,16 +32,23 @@ ICONS = {
 ICON_VIEWBOX = {"group": "0 0 22 22"}
 ICON_PATH_ATTRS = {"accessibility": ' fill-rule="evenodd" clip-rule="evenodd"'}
 
-_TEMPLATE = None
+# gabarit de conception par orientation : le HTML est dessiné pour ces
+# dimensions, le PNG final est mis à l'échelle via device_scale_factor.
+# Le portrait suit le ratio A4 (1:√2) — pensé pour l'impression.
+DESIGNS = {"landscape": (1920, 1080), "portrait": (1240, 1754)}
+TEMPLATES = {
+    "landscape": "slide_template.html",
+    "portrait": "slide_template_portrait.html",
+}
+_TEMPLATES = {}
 
 
-def _template():
-    global _TEMPLATE
-    if _TEMPLATE is None:
-        _TEMPLATE = Template(
-            (ASSET_DIR / "slide_template.html").read_text(encoding="utf-8")
+def _template(orientation="landscape"):
+    if orientation not in _TEMPLATES:
+        _TEMPLATES[orientation] = Template(
+            (ASSET_DIR / TEMPLATES[orientation]).read_text(encoding="utf-8")
         )
-    return _TEMPLATE
+    return _TEMPLATES[orientation]
 
 
 def icon_svg(name):
@@ -67,7 +74,8 @@ def asset_svg(name):
     return p.read_text(encoding="utf-8") if p.exists() else ""
 
 
-def slide_html(ev, idx, fonts):
+def slide_html(ev, idx, fonts, orientation="landscape"):
+    portrait = orientation == "portrait"
     bg, dark = CARD_COLORS.get(ev.get("color"), CARD_COLORS[None])
     tag = ev.get("tag") or ev["specs"].get("Catégorie") or "Événement"
     # les temps forts se déroulent à plusieurs endroits du bâtiment :
@@ -80,7 +88,10 @@ def slide_html(ev, idx, fonts):
         for k in keys
     )
     n_title = len(ev["title"])
-    h1_size = 80 if n_title < 50 else 64 if n_title < 80 else 52
+    if portrait:
+        h1_size = 76 if n_title < 50 else 62 if n_title < 80 else 50
+    else:
+        h1_size = 80 if n_title < 50 else 64 if n_title < 80 else 52
     specs_cls = "specs specs--tight" if len(keys) >= 4 else "specs"
 
     credit = html.escape(ev.get("credit", ""))
@@ -102,7 +113,7 @@ def slide_html(ev, idx, fonts):
 </svg>
 <div class="ph-logo">{asset_svg('logo-full.svg')}</div></div>"""
 
-    return _template().substitute(
+    return _template(orientation).substitute(
         font_regular=fonts["regular"],
         font_medium=fonts["medium"],
         ink=INK,
@@ -143,14 +154,16 @@ def slide_name(ev, idx):
 
 def render_png_firefox(html_path, png_path, size=DEFAULT_SIZE):
     """Repli : firefox --screenshot avec zoom + fenêtre aux dimensions
-    voulues (le HTML est dessiné pour 1920x1080)."""
+    voulues (le HTML est dessiné pour 1920x1080 paysage ou
+    1240x1754 — ratio A4 — portrait selon le format)."""
     w, h = size
+    dw, _ = DESIGNS["portrait" if h > w else "landscape"]
     html_path = Path(html_path).resolve()
     png_path = Path(png_path)
     zoomed = html_path.with_suffix(".zoom.html")
     zoomed.write_text(
         html_path.read_text("utf-8").replace(
-            "</head>", f"<style>html{{zoom:{w / 1920}}}</style></head>"
+            "</head>", f"<style>html{{zoom:{w / dw}}}</style></head>"
         ),
         encoding="utf-8",
     )
@@ -175,10 +188,11 @@ def render_png_firefox(html_path, png_path, size=DEFAULT_SIZE):
 
 
 def render_all(slides, size=DEFAULT_SIZE):
-    """Rend les diapos via Playwright/Chromium (viewport 1920 +
-    device_scale_factor = size/1920 → texte vectoriel ultra net).
+    """Rend les diapos via Playwright/Chromium (viewport aux dimensions
+    de conception + device_scale_factor → texte vectoriel ultra net).
     Repli Firefox si Playwright est absent."""
     w, h = size
+    dw, dh = DESIGNS["portrait" if h > w else "landscape"]
     try:
         from playwright.sync_api import sync_playwright
     except ImportError:
@@ -193,8 +207,8 @@ def render_all(slides, size=DEFAULT_SIZE):
     with sync_playwright() as p:
         browser = p.chromium.launch()
         page = browser.new_page(
-            viewport={"width": 1920, "height": 1080},
-            device_scale_factor=w / 1920,
+            viewport={"width": dw, "height": dh},
+            device_scale_factor=w / dw,
         )
         for hp, pp in slides:
             try:

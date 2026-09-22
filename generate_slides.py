@@ -37,11 +37,17 @@ def main():
         "--size", choices=sorted(SIZES), default="uhd",
         help="résolution des diapos : uhd=3840x2160, hd=1920x1080",
     )
+    ap.add_argument(
+        "--portrait", action="store_true",
+        help="génère aussi le format portrait A4 (1240x1754/2480x3508) "
+             "dans <out>/portrait/",
+    )
     args = ap.parse_args()
     try:
         generate(
             out_dir=args.out, max_events=args.max, pages=args.pages,
             size=SIZES[args.size],
+            cfg={"gen_portrait": 1} if args.portrait else None,
         )
     except RuntimeError as e:
         sys.exit(str(e))

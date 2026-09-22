@@ -56,6 +56,22 @@ Le gabarit **`assets/slide_template.html`** (1920×1080) reproduit la card
 valider la charte. Les `html/slide-*.html` générés sont autonomes
 (fontes et images en base64) — utilisables via une source **Navigateur**.
 
+### Layout portrait
+
+Une variante **portrait** de la même card (gabarit
+**`assets/slide_template_portrait.html`**, ratio **A4**) existe pour les
+autres usages de la com — pensée pour l'impression : HD → 1240×1754
+(150 dpi), UHD → **2480×3508 (300 dpi)**. Dans la webui, « Layouts
+générés » coche **Paysage** et/ou **Portrait** ; en CLI, `--portrait`
+ajoute le format portrait au rendu paysage.
+
+Les PNG portrait sont écrits dans `<out>/portrait/` (avec leur propre
+`html/` et `manifest.txt`). **Ce sous-dossier n'est jamais poussé par
+les synchros FTP/SMB** — les partages ne reçoivent que le paysage.
+Récupération via le .zip (`/api/download`, qui inclut `portrait/`), la
+galerie webui ou `/slides/portrait/<nom>`. Les deux jeux peuvent
+cohabiter : chacun a son dossier, son cache et son nettoyage.
+
 ## Diapo du jour (auditorium)
 
 Pendant une rencontre à l'auditorium, on diffuse une **slide fixe sans
@@ -149,7 +165,9 @@ suivre l'avancement via `GET /api/status` (`running`, `log`).
   "last_run_iso": "2026-09-22T10:31:24",
   "last_error": null, "log": ["…"],
   "slides": ["slide-….png"], "slides_count": 41,
+  "slides_portrait": ["slide-….png"],
   "settings": {"interval_hours": 24, "resolution": "uhd",
+               "gen_landscape": 1, "gen_portrait": 0,
                "ftp_host": "…", "has_pass": true, "has_smb_pass": true}
 }
 ```
@@ -164,6 +182,7 @@ inchangées, `ftp_pass`/`smb_pass` vides = inchangés :
 
 ```json
 {"interval_hours": 24, "max_events": 0, "resolution": "uhd",
+ "gen_landscape": 1, "gen_portrait": 0,
  "ftp_host": "", "ftp_port": 21, "ftp_user": "", "ftp_pass": "",
  "ftp_path": "/", "ftp_tls": 0,
  "smb_host": "", "smb_share": "", "smb_path": "",

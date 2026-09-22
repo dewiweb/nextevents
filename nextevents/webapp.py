@@ -7,7 +7,7 @@ from datetime import datetime
 from flask import Flask, jsonify, request, send_file, send_from_directory
 
 from .paths import ASSET_DIR
-from .runner import run_generation, slides
+from .runner import run_generation, slides, slides_portrait
 from .settings import (
     DEFAULTS, OUT_DIR, SETTINGS_FILE, load_settings, save_settings, state,
 )
@@ -31,6 +31,7 @@ def api_status():
     has_pass = bool(s.pop("ftp_pass"))
     has_smb_pass = bool(s.pop("smb_pass"))
     sl = slides()
+    sl_p = slides_portrait()
     lr = state["last_run"]
     return jsonify(
         running=state["running"],
@@ -43,6 +44,7 @@ def api_status():
         log=state["log"],
         slides=sl,
         slides_count=len(sl),
+        slides_portrait=sl_p,
         settings={**s, "has_pass": has_pass, "has_smb_pass": has_smb_pass},
     )
 
