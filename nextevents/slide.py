@@ -7,6 +7,7 @@ import os
 import re
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 from string import Template
 
@@ -209,8 +210,24 @@ def render_all(slides, size=DEFAULT_SIZE):
         # NEXTEVENTS_BROWSER_CHANNEL permet d'utiliser un navigateur
         # système (ex. "msedge" pour l'app desktop — pas de téléchargement)
         channel = os.environ.get("NEXTEVENTS_BROWSER_CHANNEL")
-        browser = p.chromium.launch(channel=channel) if channel \
-            else p.chromium.launch()
+        # Sur poste géré, le launch peut échouer de façon transitoire
+        # (AV qui scanne le profil temporaire, Edge en maj…) : on retente,
+        # puis on bascule en fenêtré si le headless reste bloqué.
+        browser = None
+        attempts = [(channel, True)] * 3 + ([(channel, False)] if channel else [])
+        for ch, headless in attempts:
+            try:
+                kw = {"headless": headless}
+                if ch:
+                    kw["channel"] = ch
+                browser = p.chromium.launch(**kw)
+                break
+            except Exception as e:
+                print(f"  ✗ lancement navigateur ({ch or 'chromium'}, "
+                      f"headless={headless}) : {e}")
+                time.sleep(2)
+        if browser is None:
+            raise RuntimeError("impossible de lancer le navigateur de rendu")
         page = browser.new_page(
             viewport={"width": dw, "height": dh},
             device_scale_factor=w / dw,
