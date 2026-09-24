@@ -33,6 +33,10 @@ DEFAULTS = {
     "smb_send_portrait": 0,
     "local_dir": "",
     "out_dir": "",
+    "ss_delay": 8,
+    "ss_transition": "fade",
+    "ss_delay_p": 8,
+    "ss_transition_p": "fade",
 }
 
 # état runtime du serveur (génération en cours, journal, dernier run)

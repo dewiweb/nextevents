@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<!--
+  Player plein écran des diapos HTML générées (OBS : Browser Source).
+  /slideshow = paysage, /slideshow/portrait = portrait.
+  La liste et les réglages (intervalle, transition) sont re-lus en
+  continu via /api/slide-list — une régénération se reflète seule.
+  Overrides possibles en query : ?delay=6&transition=none|fade|slide
+-->
+<html lang="fr"><head><meta charset="utf-8"><title>Slideshow</title>
+<style>
+html,body{margin:0;height:100%;background:#000;overflow:hidden}
+.slide{position:absolute;inset:0}
+.slide iframe{width:100%;height:100%;border:0;transform-origin:0 0}
+#empty{position:absolute;inset:0;display:none;place-items:center;
+ color:#8f8c8a;font:28px sans-serif}
+</style></head><body>
+<div id="empty">aucune diapo</div>
+<script>
+const P = new URLSearchParams(location.search);
+const layout = P.get('layout')
+  || (location.pathname.endsWith('/portrait') ? 'portrait' : '');
+const qDelay = parseFloat(P.get('delay') || '');
+const qTrans = P.get('transition') || '';
+const DUR = 700;  // durée des transitions (ms)
+
+let slides = [], idx = -1, cur = null, timer = null;
+let delay = 8, trans = 'fade';
+
+function fit(f) {
+  const d = f.contentDocument;
+  const w = d.documentElement.scrollWidth || 1920;
+  const h = d.documentElement.scrollHeight || 1080;
+  const s = Math.min(innerWidth / w, innerHeight / h);
+  f.style.width = w + 'px';
+  f.style.height = h + 'px';
+  f.style.transform =
+    `translate(${(innerWidth - w * s) / 2}px,` +
+    `${(innerHeight - h * s) / 2}px) scale(${s})`;
+}
+
+function show(name) {
+  const wrap = document.createElement('div');
+  wrap.className = 'slide';
+  const f = document.createElement('iframe');
+  f.src = '/slides/' + (layout ? layout + '/' : '') + 'html/' + name;
+  f.onload = () => fit(f);
+  wrap.appendChild(f);
+  document.body.appendChild(wrap);
+  const old = cur;
+  if (old && trans === 'fade') {
+    wrap.style.opacity = 0;
+    wrap.style.transition = `opacity ${DUR}ms`;
+    requestAnimationFrame(() => wrap.style.opacity = 1);
+    old.style.transition = `opacity ${DUR}ms`;
+    old.style.opacity = 0;
+    setTimeout(() => old.remove(), DUR + 100);
+  } else if (old && trans === 'slide') {
+    wrap.style.transform = 'translateX(100%)';
+    wrap.style.transition = `transform ${DUR}ms`;
+    old.style.transition = `transform ${DUR}ms`;
+    requestAnimationFrame(() => {
+      wrap.style.transform = 'translateX(0)';
+      old.style.transform = 'translateX(-100%)';
+    });
+    setTimeout(() => old.remove(), DUR + 100);
+  } else if (old) {
+    old.remove();
+  }
+  cur = wrap;
+}
+
+function next() {
+  if (!slides.length) return;
+  idx = (idx + 1) % slides.length;
+  show(slides[idx]);
+  arm();
+}
+
+function arm() {
+  clearTimeout(timer);
+  timer = setTimeout(next, Math.max(2, delay) * 1000);
+}
+
+async function poll() {
+  try {
+    const r = await (await fetch(
+      '/api/slide-list?layout=' + layout)).json();
+    delay = qDelay || r.delay || 8;
+    trans = qTrans || r.transition || 'fade';
+    const changed = JSON.stringify(r.slides) !== JSON.stringify(slides);
+    slides = r.slides;
+    document.getElementById('empty').style.display =
+      slides.length ? 'none' : 'grid';
+    if (changed && (!slides.length || !slides.includes(slides[idx]))) {
+      // diapo courante supprimée : repartir proprement
+      idx = -1;
+      next();
+    }
+    if (idx < 0 && slides.length) next();
+  } catch (e) { /* serveur coupé : on réessaiera */ }
+}
+
+setInterval(poll, 15000);
+poll();
+addEventListener('resize',
+  () => cur && fit(cur.querySelector('iframe')));
+</script>
+</body></html>

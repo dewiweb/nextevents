@@ -231,3 +231,29 @@ def api_download():
 @app.get("/slides/<path:name>")
 def slide_file(name):
     return send_from_directory(resolve_out_dir(), name)
+
+
+@app.get("/api/slide-list")
+def api_slide_list():
+    """Liste des diapos HTML + réglages de lecture, pour le player
+    /slideshow (pollé : la liste se met à jour toute seule après une
+    régénération)."""
+    layout = request.args.get("layout")
+    sfx = "_p" if layout == "portrait" else ""
+    d = resolve_out_dir()
+    d = (d / "portrait" if layout == "portrait" else d) / "html"
+    names = sorted(p.name for p in d.glob("*.html")) if d.exists() else []
+    s = load_settings()
+    return jsonify(
+        slides=names,
+        delay=s.get(f"ss_delay{sfx}") or 8,
+        transition=s.get(f"ss_transition{sfx}") or "fade",
+    )
+
+
+@app.get("/slideshow")
+@app.get("/slideshow/portrait")
+def slideshow():
+    """Player plein écran des diapos HTML (OBS : Browser Source →
+    /slideshow ou /slideshow/portrait)."""
+    return (ASSET_DIR / "slideshow.html").read_text(encoding="utf-8")
