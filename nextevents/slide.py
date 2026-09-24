@@ -214,8 +214,14 @@ def render_all(slides, size=DEFAULT_SIZE):
         # (AV qui scanne le profil temporaire, Edge en maj…) : on retente,
         # puis on bascule en fenêtré si le headless reste bloqué.
         browser = None
-        attempts = [(channel, True)] * 3 + ([(channel, False)] if channel else [])
-        for ch, headless in attempts:
+        # backoff long : une maj Edge ou un scan AV peut bloquer le
+        # lancement pendant une minute — on étale les tentatives
+        waits = [0, 5, 15, 30]
+        attempts = [(channel, True)] * len(waits) + \
+            ([(channel, False)] if channel else [])
+        for i, (ch, headless) in enumerate(attempts):
+            if i:
+                time.sleep(waits[min(i, len(waits) - 1)])
             try:
                 kw = {"headless": headless}
                 if ch:
@@ -224,8 +230,7 @@ def render_all(slides, size=DEFAULT_SIZE):
                 break
             except Exception as e:
                 print(f"  ✗ lancement navigateur ({ch or 'chromium'}, "
-                      f"headless={headless}) : {e}")
-                time.sleep(2)
+                      f"headless={headless}) : {type(e).__name__}")
         if browser is None:
             raise RuntimeError("impossible de lancer le navigateur de rendu")
         page = browser.new_page(
