@@ -28,8 +28,12 @@ let delay = 8, trans = 'fade';
 
 function fit(f) {
   const d = f.contentDocument;
-  const w = d.documentElement.scrollWidth || 1920;
-  const h = d.documentElement.scrollHeight || 1080;
+  // largeur/hauteur CSS fixes du gabarit — scrollWidth retournerait la
+  // taille du viewport si elle dépasse le contenu (ex. portrait 1240
+  // dans une fenêtre paysage 1920) → slide décentrée
+  const cs = f.contentWindow.getComputedStyle(d.documentElement);
+  const w = parseFloat(cs.width) || d.documentElement.scrollWidth || 1920;
+  const h = parseFloat(cs.height) || d.documentElement.scrollHeight || 1080;
   const s = Math.min(innerWidth / w, innerHeight / h);
   f.style.width = w + 'px';
   f.style.height = h + 'px';
