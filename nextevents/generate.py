@@ -11,7 +11,7 @@ from .scrape import list_events, mark_series, parse_detail
 from .slide import (
     DESIGNS, render_all, slide_html, slide_name, SIZES, DEFAULT_SIZE,
 )
-from .sync import sync_ftp, sync_smb
+from .sync import sync_ftp, sync_local, sync_smb
 
 
 def _render_set(events, fonts, dest, size, orientation="landscape"):
@@ -138,6 +138,9 @@ def generate(out_dir=None, max_events=0, pages=99, cfg=None, size=DEFAULT_SIZE):
         if cfg.get("smb_host"):
             print("    Envoi SMB…")
             sync_smb(out, cfg)
+        if cfg.get("local_dir"):
+            print("    Copie dossier local…")
+            sync_local(out, cfg)
 
     n = len(pngs) + len(list((out / "portrait").glob("*.png")))
     print(f"\nTerminé : {n} diapos dans {out}/")

@@ -131,6 +131,24 @@ details.card[open]>summary{margin-bottom:14px}
   </div>
 </details>
 
+<details class="card" id="sec_local" open>
+  <summary>Dossier local (disque / lecteur réseau)</summary>
+  <div class="row">
+    <label>Dossier de destination <input id="local_dir"
+      placeholder="D:\diaporama ou \\serveur\partage\dossier"
+      style="width:380px"></label>
+    <label style="align-self:end;color:#8f8c8a">Envoie&nbsp;:</label>
+    <label style="align-self:end;color:#efeae6"><input id="local_ls"
+      type="checkbox" style="width:auto"> Paysage</label>
+    <label style="align-self:end;color:#efeae6"><input id="local_pt"
+      type="checkbox" style="width:auto"> Portrait</label>
+    <button class="ghost" onclick="save()">Enregistrer</button>
+  </div>
+  <p class="sub" style="margin:10px 0 0">Lecteur réseau mappé ou chemin
+  UNC acceptés — Windows gère l'authentification, aucun identifiant à
+  saisir. Vide = désactivé.</p>
+</details>
+
 <details class="card" id="sec_today" open>
   <summary>Diapo du jour (auditorium) — slide fixe sans visuel :
     titre, intervenants, animateur</summary>
@@ -241,6 +259,9 @@ async function refresh(){
   setChecked('smb_pt', s.settings.smb_send_portrait);
   document.getElementById('smb_pass').placeholder =
     s.settings.has_smb_pass ? '(enregistré — vide = inchangé)' : '(non défini)';
+  setVal('local_dir', s.settings.local_dir);
+  setChecked('local_ls', s.settings.local_send_landscape);
+  setChecked('local_pt', s.settings.local_send_portrait);
   const el = document.getElementById('status');
   const last = s.last_run ? new Date(s.last_run*1000).toLocaleString('fr-FR') : 'jamais';
   el.className = 'status ' + (s.running ? 'run' : s.last_error ? 'err' : 'ok');
@@ -360,7 +381,10 @@ async function save(){
       smb_path:smb_path.value, smb_user:smb_user.value,
       smb_pass:smb_pass.value,
       smb_send_landscape:smb_ls.checked?1:0,
-      smb_send_portrait:smb_pt.checked?1:0})});
+      smb_send_portrait:smb_pt.checked?1:0,
+      local_dir:local_dir.value,
+      local_send_landscape:local_ls.checked?1:0,
+      local_send_portrait:local_pt.checked?1:0})});
   dirty.clear();
   document.getElementById('saved').textContent = 'enregistré ✓';
   setTimeout(()=>document.getElementById('saved').textContent='',2000);

@@ -1,10 +1,12 @@
-"""Synchro du dossier de sortie vers FTP et/ou partage SMB (poste OBS,
-NAS). Ne supprime à distance que les .png/.html absents en local.
+"""Synchro du dossier de sortie vers FTP, partage SMB et/ou dossier
+local (disque, lecteur réseau mappé, chemin UNC). Ne supprime à
+distance que les .png/.html absents en local.
 
 Chaque destination choisit ce qu'elle reçoit via ses réglages :
 `<proto>_send_landscape` (défaut oui — racine) et `<proto>_send_portrait`
 (défaut non — sous-dossier distant `portrait/`)."""
 
+import shutil
 from pathlib import Path
 
 
@@ -181,3 +183,47 @@ def sync_smb(out_dir, cfg):
         if sub:
             makedirs(d, exist_ok=True)
         _smb_push_dir(src, d)
+
+
+def _local_push_dir(src, d):
+    """Miroir d'un dossier local (*.png + html/*.html + manifest.txt)
+    vers le chemin `d` (disque, lecteur mappé ou UNC \\\\hôte\\partage)."""
+    d.mkdir(parents=True, exist_ok=True)
+    for pattern, hsub in (("*.png", None), ("*.html", "html")):
+        sdir = src if hsub is None else src / hsub
+        local = {p.name: p for p in sdir.glob(pattern)}
+        if hsub and not local:
+            continue
+        dd = d if hsub is None else d / hsub
+        if hsub:
+            dd.mkdir(parents=True, exist_ok=True)
+        remote = {p.name: p for p in dd.glob(pattern)}
+        for name, p in sorted(local.items()):
+            rp = remote.get(name)
+            if rp is not None and rp.stat().st_size == p.stat().st_size:
+                continue  # déjà à jour à distance
+            shutil.copy2(p, dd / name)
+            print(f"  ↑ {dd / name}")
+        for name in sorted(set(remote) - set(local)):
+            (dd / name).unlink()
+            print(f"  - local : {name} supprimé")
+    manifest = src / "manifest.txt"
+    if manifest.exists():
+        shutil.copy2(manifest, d / "manifest.txt")
+    remote_pngs = {p.name for p in d.glob("*.png")}
+    expected = {p.name for p in src.glob("*.png")}
+    if remote_pngs == expected:
+        print(f"  synchro locale {d} vérifiée : "
+              f"{len(expected)} fichiers conformes")
+
+
+def sync_local(out_dir, cfg):
+    """Copie miroir vers un dossier du système de fichiers — lecteur
+    réseau mappé (X:\\…) ou chemin UNC (\\\\hôte\\partage) inclus : pas
+    besoin de smbprotocol ni d'identifiants, Windows gère l'auth."""
+    dest = (cfg.get("local_dir") or "").strip()
+    if not dest:
+        return
+    for sub, src in _dirs(out_dir, cfg, "local"):
+        d = Path(dest) / sub if sub else Path(dest)
+        _local_push_dir(src, d)
