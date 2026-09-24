@@ -14,11 +14,11 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden}
 #empty{position:absolute;inset:0;z-index:10;display:none;
  place-items:center;color:#8f8c8a;font:28px sans-serif}
 #paused{position:absolute;right:18px;bottom:14px;z-index:10;
- display:none;color:rgba(239,234,230,.55);font:20px sans-serif;
- background:rgba(0,0,0,.45);padding:6px 14px;border-radius:20px}
+ display:none;color:rgba(239,234,230,.5);font:18px sans-serif;
+ background:rgba(0,0,0,.35);padding:6px 12px;border-radius:50%}
 </style></head><body>
 <div id="empty">aucune diapo</div>
-<div id="paused">⏸ pause</div>
+<div id="paused">⏸</div>
 <script>
 const P = new URLSearchParams(location.search);
 const layout = P.get('layout')
