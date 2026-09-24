@@ -47,21 +47,23 @@ function show(name) {
   wrap.appendChild(f);
   document.body.appendChild(wrap);
   const old = cur;
+  // reflow forcé : sans lui le style initial n'est pas commité et le
+  // navigateur saute la transition (swap instantané au lieu du fondu)
   if (old && trans === 'fade') {
     wrap.style.opacity = 0;
+    wrap.getBoundingClientRect();
     wrap.style.transition = `opacity ${DUR}ms`;
-    requestAnimationFrame(() => wrap.style.opacity = 1);
+    wrap.style.opacity = 1;
     old.style.transition = `opacity ${DUR}ms`;
     old.style.opacity = 0;
     setTimeout(() => old.remove(), DUR + 100);
   } else if (old && trans === 'slide') {
     wrap.style.transform = 'translateX(100%)';
+    wrap.getBoundingClientRect();
     wrap.style.transition = `transform ${DUR}ms`;
+    wrap.style.transform = 'translateX(0)';
     old.style.transition = `transform ${DUR}ms`;
-    requestAnimationFrame(() => {
-      wrap.style.transform = 'translateX(0)';
-      old.style.transform = 'translateX(-100%)';
-    });
+    old.style.transform = 'translateX(-100%)';
     setTimeout(() => old.remove(), DUR + 100);
   } else if (old) {
     old.remove();

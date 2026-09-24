@@ -201,9 +201,9 @@ details.card[open]>summary{margin-bottom:14px}
   <div class="row" style="margin-bottom:14px">
     <label>Slideshow — intervalle (s)
       <input id="ss_delay" type="number" min="2" step="1"
-        style="width:80px"></label>
+        onchange="save()" style="width:80px"></label>
     <label>Transition
-      <select id="ss_transition" style="width:auto">
+      <select id="ss_transition" onchange="save()" style="width:auto">
         <option value="none">Aucune</option>
         <option value="fade">Fondu</option>
         <option value="slide">Glissement</option>
@@ -219,9 +219,9 @@ details.card[open]>summary{margin-bottom:14px}
   <div class="row" style="margin-bottom:14px">
     <label>Slideshow — intervalle (s)
       <input id="ss_delay_p" type="number" min="2" step="1"
-        style="width:80px"></label>
+        onchange="save()" style="width:80px"></label>
     <label>Transition
-      <select id="ss_transition_p" style="width:auto">
+      <select id="ss_transition_p" onchange="save()" style="width:auto">
         <option value="none">Aucune</option>
         <option value="fade">Fondu</option>
         <option value="slide">Glissement</option>
