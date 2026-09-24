@@ -11,10 +11,14 @@
 html,body{margin:0;height:100%;background:#000;overflow:hidden}
 .slide{position:absolute;inset:0}
 .slide iframe{width:100%;height:100%;border:0;transform-origin:0 0}
-#empty{position:absolute;inset:0;display:none;place-items:center;
- color:#8f8c8a;font:28px sans-serif}
+#empty{position:absolute;inset:0;z-index:10;display:none;
+ place-items:center;color:#8f8c8a;font:28px sans-serif}
+#paused{position:absolute;right:18px;bottom:14px;z-index:10;
+ display:none;color:rgba(239,234,230,.55);font:20px sans-serif;
+ background:rgba(0,0,0,.45);padding:6px 14px;border-radius:20px}
 </style></head><body>
 <div id="empty">aucune diapo</div>
+<div id="paused">⏸ pause</div>
 <script>
 const P = new URLSearchParams(location.search);
 const layout = P.get('layout')
@@ -23,8 +27,8 @@ const qDelay = parseFloat(P.get('delay') || '');
 const qTrans = P.get('transition') || '';
 const qTdur = parseInt(P.get('tdur') || '');
 
-let slides = [], idx = -1, cur = null, timer = null;
-let delay = 8, trans = 'fade', dur = 1500;
+let slides = [], idx = -1, cur = null, timer = null, hideT = null;
+let delay = 8, trans = 'fade', dur = 1500, paused = false;
 
 function fit(f) {
   const d = f.contentDocument;
@@ -47,7 +51,17 @@ function show(name) {
   wrap.className = 'slide';
   const f = document.createElement('iframe');
   f.src = '/slides/' + (layout ? layout + '/' : '') + 'html/' + name;
-  f.onload = () => fit(f);
+  f.onload = () => {
+    fit(f);
+    // les clics/frappes dans l'iframe ne remontent pas au parent :
+    // on les re-écoute dans le document de la diapo (même origine)
+    const w = f.contentWindow;
+    w.addEventListener('click', togglePause);
+    w.addEventListener('mousemove', showBadge);
+    w.addEventListener('keydown', e => {
+      if (e.code === 'Space') { e.preventDefault(); togglePause(); }
+    });
+  };
   wrap.appendChild(f);
   document.body.appendChild(wrap);
   const old = cur;
@@ -84,7 +98,31 @@ function next() {
 
 function arm() {
   clearTimeout(timer);
-  timer = setTimeout(next, Math.max(2, delay) * 1000);
+  if (!paused)
+    timer = setTimeout(next, Math.max(2, delay) * 1000);
+}
+
+// badge « pause » façon lecteur vidéo : visible à la mise en pause et
+// au moindre mouvement de souris, masqué après ~2 s d'inactivité
+function showBadge() {
+  if (!paused) return;
+  const b = document.getElementById('paused');
+  b.style.display = 'block';
+  clearTimeout(hideT);
+  hideT = setTimeout(() => b.style.display = 'none', 1800);
+}
+
+function togglePause() {
+  paused = !paused;
+  const b = document.getElementById('paused');
+  if (paused) {
+    clearTimeout(timer);
+    showBadge();
+  } else {
+    clearTimeout(hideT);
+    b.style.display = 'none';
+    arm();
+  }
 }
 
 async function poll() {
@@ -107,6 +145,11 @@ async function poll() {
   } catch (e) { /* serveur coupé : on réessaiera */ }
 }
 
+addEventListener('click', togglePause);
+addEventListener('mousemove', showBadge);
+addEventListener('keydown', e => {
+  if (e.code === 'Space') { e.preventDefault(); togglePause(); }
+});
 setInterval(poll, 15000);
 poll();
 addEventListener('resize',
