@@ -7,7 +7,9 @@ import time
 
 from .generate import generate
 from .slide import SIZES, DEFAULT_SIZE
-from .settings import OUT_DIR, load_settings, save_settings, lock, state
+from .settings import (
+    load_settings, resolve_out_dir, save_settings, lock, state,
+)
 
 
 class LogWriter(io.TextIOBase):
@@ -28,7 +30,7 @@ def run_generation():
         s = load_settings()
         with contextlib.redirect_stdout(LogWriter()):
             generate(
-                out_dir=OUT_DIR, max_events=s["max_events"], cfg=s,
+                out_dir=resolve_out_dir(s), max_events=s["max_events"], cfg=s,
                 size=SIZES.get(s["resolution"], DEFAULT_SIZE),
             )
         state["last_run"] = time.time()
@@ -62,14 +64,15 @@ def scheduler():
 
 
 def slides():
-    if not OUT_DIR.exists():
+    d = resolve_out_dir()
+    if not d.exists():
         return []
-    return sorted(p.name for p in OUT_DIR.glob("*.png"))
+    return sorted(p.name for p in d.glob("*.png"))
 
 
 def slides_portrait():
     """Diapos portrait (sous-dossier, non poussées par les synchros)."""
-    d = OUT_DIR / "portrait"
+    d = resolve_out_dir() / "portrait"
     if not d.exists():
         return []
     return sorted(p.name for p in d.glob("*.png"))

@@ -34,6 +34,7 @@ DEFAULTS = {
     "local_dir": "",
     "local_send_landscape": 1,
     "local_send_portrait": 0,
+    "out_dir": "",
 }
 
 # état runtime du serveur (génération en cours, journal, dernier run)
@@ -59,6 +60,15 @@ def load_settings():
     if s.get("last_run"):
         state["last_run"] = s["last_run"]
     return out
+
+
+def resolve_out_dir(cfg=None):
+    """Dossier de sortie effectif : réglage `out_dir` (disque local,
+    lecteur mappé, UNC) s'il est rempli, sinon OUT_DIR env/défaut."""
+    if cfg is None:
+        cfg = load_settings()
+    d = (cfg.get("out_dir") or "").strip()
+    return Path(d) if d else OUT_DIR
 
 
 def save_settings(s):

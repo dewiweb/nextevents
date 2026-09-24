@@ -9,7 +9,8 @@ from flask import Flask, jsonify, request, send_file, send_from_directory
 from .paths import ASSET_DIR
 from .runner import run_generation, slides, slides_portrait
 from .settings import (
-    DEFAULTS, OUT_DIR, SETTINGS_FILE, load_settings, save_settings, state,
+    DEFAULTS, OUT_DIR, SETTINGS_FILE, load_settings, resolve_out_dir,
+    save_settings, state,
 )
 from . import slide as _slide  # tailles disponibles (SIZES)
 
@@ -118,7 +119,7 @@ def api_smb_test():
 def _events_meta():
     """Métadonnées des événements écrites par generate() (events.json)."""
     import json
-    p = OUT_DIR / "events.json"
+    p = resolve_out_dir() / "events.json"
     if not p.exists():
         return []
     try:
@@ -189,15 +190,16 @@ def api_today():
     }
     if not data["title"]:
         return jsonify(ok=False, errors=["titre vide"]), 400
-    write_today(data)
     cfg = load_settings()
+    out = resolve_out_dir(cfg)
+    write_today(data, out)
     errors = []
     try:  # PNG à la même résolution que les autres diapos
         render_today_png(_slide.SIZES.get(
-            cfg.get("resolution"), _slide.DEFAULT_SIZE))
+            cfg.get("resolution"), _slide.DEFAULT_SIZE), out)
     except Exception as e:
         errors.append(f"PNG : {e}")
-    errors += push_today(cfg)
+    errors += push_today(cfg, out)
     return jsonify(ok=not errors, errors=errors,
                    file="today/index.html")
 
@@ -205,7 +207,7 @@ def api_today():
 @app.get("/today/")
 @app.get("/today/index.html")
 def today_page():
-    return send_from_directory(OUT_DIR / "today", "index.html")
+    return send_from_directory(resolve_out_dir() / "today", "index.html")
 
 
 @app.get("/api/download")
@@ -214,10 +216,11 @@ def api_download():
     import zipfile
 
     buf = io.BytesIO()
+    out = resolve_out_dir()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
-        for p in sorted(OUT_DIR.rglob("*")):
+        for p in sorted(out.rglob("*")):
             if p.is_file() and p.name != SETTINGS_FILE.name:
-                z.write(p, p.relative_to(OUT_DIR))
+                z.write(p, p.relative_to(out))
     buf.seek(0)
     return send_file(
         buf, as_attachment=True,
@@ -227,4 +230,4 @@ def api_download():
 
 @app.get("/slides/<path:name>")
 def slide_file(name):
-    return send_from_directory(OUT_DIR, name)
+    return send_from_directory(resolve_out_dir(), name)
