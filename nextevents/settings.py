@@ -35,8 +35,10 @@ DEFAULTS = {
     "out_dir": "",
     "ss_delay": 8,
     "ss_transition": "fade",
+    "ss_tdur": 1500,
     "ss_delay_p": 8,
     "ss_transition_p": "fade",
+    "ss_tdur_p": 1500,
 }
 
 # état runtime du serveur (génération en cours, journal, dernier run)

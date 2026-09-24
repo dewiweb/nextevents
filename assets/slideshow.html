@@ -21,10 +21,10 @@ const layout = P.get('layout')
   || (location.pathname.endsWith('/portrait') ? 'portrait' : '');
 const qDelay = parseFloat(P.get('delay') || '');
 const qTrans = P.get('transition') || '';
-const DUR = 700;  // durée des transitions (ms)
+const qTdur = parseInt(P.get('tdur') || '');
 
 let slides = [], idx = -1, cur = null, timer = null;
-let delay = 8, trans = 'fade';
+let delay = 8, trans = 'fade', dur = 1500;
 
 function fit(f) {
   const d = f.contentDocument;
@@ -56,19 +56,19 @@ function show(name) {
   if (old && trans === 'fade') {
     wrap.style.opacity = 0;
     wrap.getBoundingClientRect();
-    wrap.style.transition = `opacity ${DUR}ms`;
+    wrap.style.transition = `opacity ${dur}ms`;
     wrap.style.opacity = 1;
-    old.style.transition = `opacity ${DUR}ms`;
+    old.style.transition = `opacity ${dur}ms`;
     old.style.opacity = 0;
-    setTimeout(() => old.remove(), DUR + 100);
+    setTimeout(() => old.remove(), dur + 100);
   } else if (old && trans === 'slide') {
     wrap.style.transform = 'translateX(100%)';
     wrap.getBoundingClientRect();
-    wrap.style.transition = `transform ${DUR}ms`;
+    wrap.style.transition = `transform ${dur}ms`;
     wrap.style.transform = 'translateX(0)';
-    old.style.transition = `transform ${DUR}ms`;
+    old.style.transition = `transform ${dur}ms`;
     old.style.transform = 'translateX(-100%)';
-    setTimeout(() => old.remove(), DUR + 100);
+    setTimeout(() => old.remove(), dur + 100);
   } else if (old) {
     old.remove();
   }
@@ -93,6 +93,7 @@ async function poll() {
       '/api/slide-list?layout=' + layout)).json();
     delay = qDelay || r.delay || 8;
     trans = qTrans || r.transition || 'fade';
+    dur = qTdur || r.tdur || 1500;
     const changed = JSON.stringify(r.slides) !== JSON.stringify(slides);
     slides = r.slides;
     document.getElementById('empty').style.display =

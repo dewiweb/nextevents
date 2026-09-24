@@ -208,6 +208,9 @@ details.card[open]>summary{margin-bottom:14px}
         <option value="fade">Fondu</option>
         <option value="slide">Glissement</option>
       </select></label>
+    <label>Durée (ms)
+      <input id="ss_tdur" type="number" min="0" step="100"
+        onchange="save()" style="width:90px"></label>
     <a class="link" href="/slideshow" target="_blank"
       style="align-self:end">ouvrir le slideshow →</a>
   </div>
@@ -226,6 +229,9 @@ details.card[open]>summary{margin-bottom:14px}
         <option value="fade">Fondu</option>
         <option value="slide">Glissement</option>
       </select></label>
+    <label>Durée (ms)
+      <input id="ss_tdur_p" type="number" min="0" step="100"
+        onchange="save()" style="width:90px"></label>
     <a class="link" href="/slideshow/portrait" target="_blank"
       style="align-self:end">ouvrir le slideshow →</a>
   </div>
@@ -290,8 +296,10 @@ async function refresh(){
   setVal('local_dir', s.settings.local_dir);
   setVal('ss_delay', s.settings.ss_delay);
   setVal('ss_transition', s.settings.ss_transition);
+  setVal('ss_tdur', s.settings.ss_tdur);
   setVal('ss_delay_p', s.settings.ss_delay_p);
   setVal('ss_transition_p', s.settings.ss_transition_p);
+  setVal('ss_tdur_p', s.settings.ss_tdur_p);
   const el = document.getElementById('status');
   const last = s.last_run ? new Date(s.last_run*1000).toLocaleString('fr-FR') : 'jamais';
   el.className = 'status ' + (s.running ? 'run' : s.last_error ? 'err' : 'ok');
@@ -415,8 +423,10 @@ async function save(){
       out_dir:out_dir.value,
       local_dir:local_dir.value,
       ss_delay:+ss_delay.value, ss_transition:ss_transition.value,
+      ss_tdur:+ss_tdur.value,
       ss_delay_p:+ss_delay_p.value,
-      ss_transition_p:ss_transition_p.value})});
+      ss_transition_p:ss_transition_p.value,
+      ss_tdur_p:+ss_tdur_p.value})});
   dirty.clear();
   document.getElementById('saved').textContent = 'enregistré ✓';
   setTimeout(()=>document.getElementById('saved').textContent='',2000);

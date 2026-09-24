@@ -248,6 +248,7 @@ def api_slide_list():
         slides=names,
         delay=s.get(f"ss_delay{sfx}") or 8,
         transition=s.get(f"ss_transition{sfx}") or "fade",
+        tdur=s.get(f"ss_tdur{sfx}") or 1500,
     )
 
 
