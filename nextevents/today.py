@@ -138,15 +138,20 @@ def qr_html(series, bg, fonts):
     buf = io.BytesIO()
     img.convert("RGB").save(buf, "PNG")
     logo = ASSET_DIR / "logo-mark.svg"
+    name = series[0].lower() + series[1:]
+    i = name.find(" ") + 1
+    name = name[:i] + name[i].upper() + name[i + 1:]
     return _template_qr().substitute(
         font_regular=fonts["regular"],
         font_medium=fonts["medium"],
         bg=bg,
         sentence=html.escape(
-            f"Retrouvez {series} à venir et le Mag des Champs Libres "
-            "en scannant le QR code"),
+            f"Retrouvez {name} à venir "
+            "et le Mag des Champs Libres en scannant le QR code"),
         qr_data="data:image/png;base64," + base64.b64encode(
             buf.getvalue()).decode(),
+        arrow_data="data:image/png;base64," + base64.b64encode(
+            (ASSET_DIR / "qr_arrow.png").read_bytes()).decode(),
         logo_mark=logo.read_text("utf-8") if logo.exists() else "",
     )
 
