@@ -32,8 +32,6 @@ DEFAULTS = {
     "smb_send_landscape": 1,
     "smb_send_portrait": 0,
     "local_dir": "",
-    "local_send_landscape": 1,
-    "local_send_portrait": 0,
     "out_dir": "",
 }
 

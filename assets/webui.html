@@ -141,10 +141,6 @@ details.card[open]>summary{margin-bottom:14px}
     <label>vers <input id="local_dir"
       placeholder="D:\diaporama ou \\serveur\partage\dossier"
       style="width:300px"></label>
-    <label style="align-self:end;color:#efeae6"><input id="local_ls"
-      type="checkbox" style="width:auto"> Paysage</label>
-    <label style="align-self:end;color:#efeae6"><input id="local_pt"
-      type="checkbox" style="width:auto"> Portrait</label>
     <button class="ghost" onclick="save()">Enregistrer</button>
   </div>
   <p class="sub" style="margin:10px 0 0"><b>Dossier de sortie</b> : les
@@ -266,8 +262,6 @@ async function refresh(){
     s.settings.has_smb_pass ? '(enregistré — vide = inchangé)' : '(non défini)';
   setVal('out_dir', s.settings.out_dir);
   setVal('local_dir', s.settings.local_dir);
-  setChecked('local_ls', s.settings.local_send_landscape);
-  setChecked('local_pt', s.settings.local_send_portrait);
   const el = document.getElementById('status');
   const last = s.last_run ? new Date(s.last_run*1000).toLocaleString('fr-FR') : 'jamais';
   el.className = 'status ' + (s.running ? 'run' : s.last_error ? 'err' : 'ok');
@@ -389,9 +383,7 @@ async function save(){
       smb_send_landscape:smb_ls.checked?1:0,
       smb_send_portrait:smb_pt.checked?1:0,
       out_dir:out_dir.value,
-      local_dir:local_dir.value,
-      local_send_landscape:local_ls.checked?1:0,
-      local_send_portrait:local_pt.checked?1:0})});
+      local_dir:local_dir.value})});
   dirty.clear();
   document.getElementById('saved').textContent = 'enregistré ✓';
   setTimeout(()=>document.getElementById('saved').textContent='',2000);

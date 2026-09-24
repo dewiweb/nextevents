@@ -218,12 +218,17 @@ def _local_push_dir(src, d):
 
 
 def sync_local(out_dir, cfg):
-    """Copie miroir vers un dossier du système de fichiers — lecteur
-    réseau mappé (X:\\…) ou chemin UNC (\\\\hôte\\partage) inclus : pas
-    besoin de smbprotocol ni d'identifiants, Windows gère l'auth."""
+    """Copie miroir de tout ce qui a été généré vers un dossier du
+    système de fichiers — lecteur réseau mappé (X:\\…) ou chemin UNC
+    (\\\\hôte\\partage) inclus : pas besoin de smbprotocol ni
+    d'identifiants, Windows gère l'auth."""
     dest = (cfg.get("local_dir") or "").strip()
     if not dest:
         return
-    for sub, src in _dirs(out_dir, cfg, "local"):
+    out_dir = Path(out_dir)
+    dirs = [("", out_dir)]
+    if (out_dir / "portrait").exists():
+        dirs.append(("portrait", out_dir / "portrait"))
+    for sub, src in dirs:
         d = Path(dest) / sub if sub else Path(dest)
         _local_push_dir(src, d)
