@@ -7,7 +7,11 @@ from PIL import Image
 
 from .media import download_image, ensure_fonts
 from .paths import OUT_DIR
-from .scrape import list_events, mark_series, parse_detail
+from .scrape import (
+    DEFAULT_CATEGORIES, group_sessions, list_events, mark_series,
+    parse_detail, parse_series_map,
+)
+from .settings import parse_kv
 from .slide import (
     DESIGNS, render_all, slide_html, slide_name, SIZES, DEFAULT_SIZE,
 )
@@ -66,6 +70,44 @@ def _render_set(events, fonts, dest, size, orientation="landscape"):
     return pngs
 
 
+def _apply_spec_prefs(events, cfg):
+    """Réglages des specs affichées : specs_show (liste de clés à
+    garder — vide = tout), spec_drops (items retirés des valeurs
+    composées, p. ex. « Dispositifs d'écoute amplifiée ») et
+    spec_overrides (« Clé = valeur » par ligne — ajout ou remplace).
+    'Date' est toujours conservée : elle sert au nommage et est
+    l'information centrale de la diapo."""
+    cfg = cfg or {}
+    shown = [t.strip() for t in
+             (cfg.get("specs_show") or "").split(",") if t.strip()]
+    show = set(shown) if shown else None
+    drops = {t.strip() for t in
+             (cfg.get("spec_drops") or "").split(",") if t.strip()}
+    over = parse_kv(cfg.get("spec_overrides") or "")
+    if show is None and not drops and not over:
+        return
+    for e in events:
+        specs = e.get("specs")
+        if specs is None:
+            continue
+        if show is not None:
+            specs = {k: v for k, v in specs.items()
+                     if k in show or k == "Date"}
+        if drops:
+            for k, v in list(specs.items()):
+                if k == "Date":
+                    continue
+                kept = [t for t in (s.strip() for s in v.split(" · "))
+                        if t and t not in drops]
+                if len(kept) < len(v.split(" · ")):
+                    if kept:
+                        specs[k] = " · ".join(kept)
+                    else:
+                        del specs[k]
+        specs.update(over)
+        e["specs"] = specs
+
+
 def generate(out_dir=None, max_events=0, pages=99, cfg=None, size=DEFAULT_SIZE):
     """Génère le diaporama complet. Retourne la liste des PNG produits.
     cfg peut contenir les réglages ftp_* et smb_* pour pousser le
@@ -73,7 +115,13 @@ def generate(out_dir=None, max_events=0, pages=99, cfg=None, size=DEFAULT_SIZE):
     out = Path(out_dir) if out_dir else OUT_DIR
 
     print("1/5 Récupération des événements…")
-    events = list_events(max_pages=pages)
+    cats = DEFAULT_CATEGORIES
+    if cfg and (cfg.get("gen_categories") or "").strip():
+        cats = [c.strip() for c in cfg["gen_categories"].split(",")
+                if c.strip()]
+    events = list_events(max_pages=pages, categories=cats)
+    # une carte par séance sur le site → une diapo par événement
+    events = group_sessions(events, (cfg or {}).get("next_label"))
     if max_events:
         events = events[:max_events]
     print(f"  {len(events)} événements trouvés")
@@ -85,7 +133,9 @@ def generate(out_dir=None, max_events=0, pages=99, cfg=None, size=DEFAULT_SIZE):
     print("2/5 Pages de détail + images…")
     with ThreadPoolExecutor(max_workers=6) as ex:
         events = list(ex.map(lambda e: download_image(parse_detail(e)), events))
-    mark_series(events)
+    mark_series(events, parse_series_map((cfg or {}).get("series_map"))
+                  or None)
+    _apply_spec_prefs(events, cfg)
 
     # métadonnées pour la « diapo du jour » de la webui
     import json

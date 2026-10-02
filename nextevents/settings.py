@@ -11,7 +11,15 @@ OUT_DIR = Path(os.environ.get("OUT_DIR", DEFAULT_OUT))
 SETTINGS_FILE = Path(os.environ.get("SETTINGS_FILE", OUT_DIR / "settings.json"))
 
 DEFAULTS = {
-    "interval_hours": 0,
+    "interval_hours": 0,       # legacy — converti en interval_min
+    "interval_min": 0,
+    "sched_times": "",         # heures fixes « HH:MM, HH:MM »
+    "gen_categories": "",      # slugs à virgules (vide = 5 vitrine)
+    "specs_show": "",          # clés de specs affichées (vide = toutes)
+    "spec_overrides": "",      # « Clé = valeur » par ligne
+    "spec_drops": "",          # items retirés des specs, à virgules
+    "next_label": "",          # préfixe récurrents (vide = défaut)
+    "series_map": "",          # « slug = Libellé » séries suivies
     "max_events": 0,
     "resolution": "uhd",
     "gen_landscape": 1,
@@ -63,6 +71,11 @@ def load_settings():
             out[k] = str(v)
     if s.get("last_run"):
         state["last_run"] = s["last_run"]
+    # migration : l'ancien réglage en heures alimente interval_min
+    # uniquement si la clé est absente du fichier (sinon un
+    # interval_min à 0 saisi par l'utilisateur serait réécrit)
+    if "interval_min" not in s and out["interval_hours"]:
+        out["interval_min"] = out["interval_hours"] * 60
     return out
 
 
@@ -81,3 +94,21 @@ def save_settings(s):
     if state["last_run"]:
         payload["last_run"] = state["last_run"]
     SETTINGS_FILE.write_text(json.dumps(payload, indent=2))
+
+
+DEFAULT_NEXT_LABEL = "Prochaine séance : "
+
+
+def parse_kv(text):
+    """« Clé = valeur » par ligne → dict (réglage spec_overrides).
+    Lignes vides/# ignorées."""
+    out = {}
+    for line in (text or "").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        k, _, v = line.partition("=")
+        k, v = k.strip(), v.strip()
+        if k:
+            out[k] = v
+    return out

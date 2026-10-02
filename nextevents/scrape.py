@@ -17,7 +17,17 @@ CATEGORIES = [
     ("Projection", "projections-aux-champs-libres"),
     ("Spectacle", "spectacles-aux-champs-libres"),
     ("Temps fort", "evenements-aux-champs-libres"),
+    ("Animation", "animations-aux-champs-libres"),
+    ("Atelier", "ateliers-aux-champs-libres"),
+    ("Exposition", "expositions-aux-champs-libres"),
+    ("RDV4C", "rdv4c-aux-champs-libres"),
+    ("Visite", "visites-aux-champs-libres"),
 ]
+# les 5 catégories « vitrine » historiques : défaut du réglage
+# gen_categories (le reste — ateliers, visites, rdv4c… — produit un
+# volume très supérieur de séances récurrentes)
+DEFAULT_CATEGORIES = [
+    slug for _, slug in CATEGORIES[:5]]
 
 # Couleurs de card du site : nom du modifieur CSS -> (fond, variante foncée).
 # Reflète les classes .v-event--{couleur} / .v-banner--{couleur} du site
@@ -103,11 +113,49 @@ def event_dates(ev):
     return None, None
 
 
-def list_events(max_pages=99):
+def group_sessions(events, next_label=None):
+    """Fusionne les séances multiples d'un même événement : le site
+    éclate chaque date en carte séparée (animations, ateliers, visites
+    et rdv4c récurrents → des dizaines de cartes par événement). Une
+    diapo = un événement : on garde la prochaine séance.
+    `next_label` préfixe la date des récurrents (vide = date seule)."""
+    if next_label is None:
+        from .settings import DEFAULT_NEXT_LABEL
+        next_label = DEFAULT_NEXT_LABEL
+    groups = {}
+    for ev in events:
+        key = re.sub(r"[^a-z0-9à-ÿ]+", "", (ev.get("title") or "")
+                     .lower())
+        groups.setdefault(key, []).append(ev)
+    out = []
+    for g in groups.values():
+        # la carte de la prochaine séance porte image/tag/couleur ;
+        # son « Date » est la prochaine occurrence — c'est elle qui
+        # compte pour l'affichage et le tri
+        g.sort(key=lambda e: e.get("_dt") or (9999, 12, 31, 23, 59))
+        ev = g[0]
+        if len(g) > 1:
+            ev["n_sessions"] = len(g)
+            d = ev["specs"].get("Date", "")
+            if d and next_label \
+                    and not d.startswith(next_label.strip()):
+                ev["specs"]["Date"] = f"{next_label}{d}"
+        out.append(ev)
+    out.sort(key=lambda e: (
+        0 if e.get("pinned") else 1, e.get("_dt") or (9999, 12, 31, 23, 59)))
+    return out
+
+
+def list_events(max_pages=99, categories=None):
     """Itère les pages de chaque catégorie et retourne les événements
-    dédupliqués, triés chronologiquement."""
+    dédupliqués, triés chronologiquement. `categories` restreint aux
+    slugs donnés ; None = les 5 catégories vitrine historiques."""
+    wanted = (set(categories) if categories is not None
+              else set(DEFAULT_CATEGORIES))
     events, seen = [], set()
     for cat_label, slug in CATEGORIES:
+        if slug not in wanted:
+            continue
         list_url = f"{BASE}/au-programme/categorie/{slug}"
         page = 1
         while page <= max_pages:
@@ -270,10 +318,26 @@ def _extract_access(text):
     return "\n".join(out)
 
 
-def mark_series(events):
+def parse_series_map(text):
+    """« slug = Libellé » par ligne → dict (réglage series_map).
+    Lignes sans « = » ignorées ; dict vide si champ vide."""
+    out = {}
+    for line in (text or "").splitlines():
+        line = line.strip()
+        if not line or "=" not in line:
+            continue
+        slug, _, label = line.partition("=")
+        slug, label = slug.strip(), label.strip()
+        if slug and label:
+            out[slug] = label
+    return out
+
+
+def mark_series(events, series_map=None):
     """Marque ev['series'] d'après les pages séries du site — source
-    exhaustive (toutes les pages détail ne portent pas le bloc série)."""
-    for slug, label in SERIES.items():
+    exhaustive (toutes les pages détail ne portent pas le bloc série).
+    `series_map` surcharge les séries à suivre (réglage series_map)."""
+    for slug, label in (series_map or SERIES).items():
         try:
             html_text = get(f"{BASE}/au-programme/{slug}").text
         except Exception as e:

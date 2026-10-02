@@ -59,8 +59,10 @@ details.card[open]>summary{margin-bottom:14px}
 <details class="card" id="sec_set" open>
   <summary>Réglages</summary>
   <div class="row">
-    <label>Rafraîchissement auto (heures, 0 = off)
+    <label>Rafraîchissement auto (min, 0 = off)
       <input id="interval" type="number" min="0" step="1"></label>
+    <label>Heures fixes (HH:MM, virgules)
+      <input id="sched_times" placeholder="06:00, 18:30"></label>
     <label>Nb max d'événements (0 = tous)
       <input id="maxev" type="number" min="0" step="1"></label>
     <label>Résolution
@@ -84,6 +86,37 @@ details.card[open]>summary{margin-bottom:14px}
   reçoit (cases « Envoie : Paysage / Portrait ») — par défaut seul le
   paysage part ; le portrait est aussi récupérable via le .zip ou la
   galerie ci-dessous.</p>
+  <div class="row" style="margin-top:12px">
+    <label>Catégories (slugs, virgules — vide = 5 vitrine)
+      <input id="gen_categories" style="width:380px"
+        placeholder="rencontres-…, concerts-…"></label>
+    <label>Préfixe récurrents
+      <input id="next_label" style="width:220px"
+        placeholder="Prochaine séance : "></label>
+    <label>Séries suivies (slug = Libellé, par ligne)
+      <textarea id="series_map" rows="2" style="width:300px"
+        placeholder="les-grands-temoins = Les grands témoins"></textarea></label>
+  </div>
+  <div class="row" style="margin-top:12px">
+    <label>Specs affichées (virgules — vide = toutes)
+      <input id="specs_show" style="width:300px"
+        placeholder="Date, Durée, Lieu, Tarif"></label>
+    <label>Items retirés des specs (virgules)
+      <input id="spec_drops" style="width:300px"
+        placeholder="Dispositifs d'écoute amplifiée"></label>
+    <label>Specs forcées (Clé = valeur, par ligne)
+      <textarea id="spec_over" rows="2" style="width:300px"
+        placeholder="Lieu = Hall"></textarea></label>
+  </div>
+  <p class="sub" style="margin:10px 0 0"><b>Catégories</b> : slugs des
+  pages <code>/au-programme/categorie/&lt;slug&gt;</code> (rencontres-,
+  concerts-, projections-, spectacles-, evenements-, animations-,
+  ateliers-, expositions-, rdv4c-, visites-aux-champs-libres).
+  <b>Specs affichées</b> restreint les infos de la diapo — « Date » est
+  toujours gardée. <b>Items retirés</b> supprime des éléments des
+  valeurs composées (séparateur « · ») ; <b>Specs forcées</b> ajoute
+  ou remplace une spec sur toutes les diapos. <b>Heures fixes</b> :
+  régénère chaque jour à ces heures, en plus de l'intervalle.</p>
 </details>
 
 <details class="card" id="sec_ftp" open>
@@ -287,7 +320,7 @@ document.querySelectorAll('details.card[id]').forEach(d => {
 });
 // champs en cours d'édition : ne pas les écraser au rafraîchissement auto
 const dirty = new Set();
-document.querySelectorAll('input,select').forEach(el => {
+document.querySelectorAll('input,select,textarea').forEach(el => {
   el.addEventListener('input', () => dirty.add(el.id));
   el.addEventListener('change', () => dirty.add(el.id));
 });
@@ -303,8 +336,15 @@ function setChecked(id, v){
 }
 async function refresh(){
   const s = await (await fetch('/api/status')).json();
-  setVal('interval', s.settings.interval_hours);
+  setVal('interval', s.settings.interval_min);
+  setVal('sched_times', s.settings.sched_times);
   setVal('maxev', s.settings.max_events);
+  setVal('gen_categories', s.settings.gen_categories);
+  setVal('next_label', s.settings.next_label);
+  setVal('series_map', s.settings.series_map);
+  setVal('specs_show', s.settings.specs_show);
+  setVal('spec_drops', s.settings.spec_drops);
+  setVal('spec_over', s.settings.spec_overrides);
   setVal('res', s.settings.resolution);
   setChecked('gen_ls', s.settings.gen_landscape);
   setChecked('gen_pt', s.settings.gen_portrait);
@@ -511,7 +551,12 @@ async function save(){
   await fetch('/api/settings',{method:'POST',
     headers:{'Content-Type':'application/json'},
     body:JSON.stringify({
-      interval_hours:+interval.value, max_events:+maxev.value,
+      interval_min:+interval.value, sched_times:sched_times.value,
+      max_events:+maxev.value,
+      gen_categories:gen_categories.value,
+      next_label:next_label.value, series_map:series_map.value,
+      specs_show:specs_show.value, spec_drops:spec_drops.value,
+      spec_overrides:spec_over.value,
       resolution:res.value,
       gen_landscape:gen_ls.checked?1:0, gen_portrait:gen_pt.checked?1:0,
       ftp_host:ftp_host.value, ftp_port:+ftp_port.value,
