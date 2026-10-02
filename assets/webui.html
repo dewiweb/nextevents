@@ -192,7 +192,36 @@ details.card[open]>summary{margin-bottom:14px}
   <div class="row" style="margin-top:14px">
     <button onclick="genToday()">Générer la diapo du jour</button>
     <a class="link" href="/today/index.html" target="_blank">aperçu →</a>
+    <button class="ghost" onclick="toggleTodayEdit()">
+      Retoucher la diapo</button>
     <span class="status" id="t_gen"></span>
+  </div>
+  <div id="t_editbox" style="display:none;margin-top:14px">
+    <div class="row" style="margin-bottom:10px">
+      <button class="ghost" onclick="saveTodayHtml()">
+        Enregistrer les retouches</button>
+      <button class="ghost" onclick="loadTodayPreview()">
+        Recharger l'aperçu</button>
+      <button class="ghost" id="t_srcbtn" onclick="toggleTodaySrc()">
+        Source HTML</button>
+      <span class="status" id="t_edit"></span>
+    </div>
+    <div id="t_frame_wrap" style="background:#000;
+      border:1px solid #302f2e;border-radius:10px;overflow:hidden;
+      height:540px;cursor:text">
+      <iframe id="t_frame" title="retouche diapo"
+        style="width:1920px;height:1080px;border:0;
+          transform:scale(.5);transform-origin:0 0"></iframe>
+    </div>
+    <textarea id="t_html" spellcheck="false"
+      style="display:none;height:340px;font-family:monospace;
+        font-size:12px"></textarea>
+    <p class="sub" style="margin:8px 0 0">L'aperçu est modifiable :
+    clic dans un texte pour l'éditer (titre, noms, pied de page…).
+    « Enregistrer » écrit le HTML retouché, re-rend le PNG et l'envoie
+    sur les partages. « Source HTML » bascule sur le code brut pour les
+    retouches avancées. « Générer la diapo du jour » recrée une version
+    propre depuis les champs — les retouches sont alors perdues.</p>
   </div>
 </details>
 
@@ -402,6 +431,75 @@ async function genToday(){
       series:ev.series||''})})).json();
   el.textContent = r.ok ? 'générée ✓ envoyée sur le partage'
     : 'générée — envoi : '+(r.errors||[]).join(' ; ');
+  if (document.getElementById('t_editbox').style.display !== 'none')
+    loadTodayPreview();
+}
+
+// ——— retouche WYSIWYG de la diapo du jour ———
+// L'aperçu iframe (same-origin) passe en contentEditable : les textes
+// s'éditent en place. « Source HTML » expose le code brut à la place.
+function t_frame(){ return document.getElementById('t_frame'); }
+function toggleTodayEdit(){
+  const box = document.getElementById('t_editbox');
+  const show = box.style.display === 'none';
+  box.style.display = show ? '' : 'none';
+  if (show) loadTodayPreview();
+}
+function loadTodayPreview(){
+  const el = document.getElementById('t_edit');
+  el.textContent = '';
+  const f = t_frame();
+  // cache-bust : index.html vient d'être réécrit
+  f.onload = () => {
+    const d = f.contentDocument;
+    if (d && d.body) d.body.contentEditable = 'true';
+  };
+  f.src = '/today/index.html?t=' + Date.now();
+  // recharge aussi la source pour rester sync si on bascule
+  fetch('/api/today/html').then(r => r.json()).then(j => {
+    if (j.ok) document.getElementById('t_html').value = j.html;
+  }).catch(() => {});
+}
+let todaySrcMode = false;
+function toggleTodaySrc(){
+  todaySrcMode = !todaySrcMode;
+  document.getElementById('t_frame_wrap').style.display =
+    todaySrcMode ? 'none' : '';
+  document.getElementById('t_html').style.display =
+    todaySrcMode ? '' : 'none';
+  document.getElementById('t_srcbtn').textContent =
+    todaySrcMode ? 'Aperçu éditable' : 'Source HTML';
+  if (todaySrcMode){
+    // snapshot de l'aperçu courant → la source reflète les retouches
+    const d = t_frame().contentDocument;
+    if (d && d.documentElement){
+      d.body && d.body.removeAttribute('contenteditable');
+      document.getElementById('t_html').value =
+        '<!DOCTYPE html>\n' + d.documentElement.outerHTML;
+    }
+  }
+}
+async function saveTodayHtml(){
+  const el = document.getElementById('t_edit');
+  el.textContent = 'enregistrement…';
+  let h;
+  if (todaySrcMode){
+    h = document.getElementById('t_html').value;
+  } else {
+    const d = t_frame().contentDocument;
+    if (!d || !d.documentElement){
+      el.textContent = 'aperçu vide — génère d\'abord la diapo';
+      return;
+    }
+    d.body && d.body.removeAttribute('contenteditable');
+    h = '<!DOCTYPE html>\n' + d.documentElement.outerHTML;
+  }
+  const r = await (await fetch('/api/today/html',{method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({html:h})})).json();
+  el.textContent = r.ok ? 'enregistré ✓ PNG re-rendu, envoyé'
+    : 'enregistrement : '+(r.errors||[r.error||'erreur']).join(' ; ');
+  loadTodayPreview();
 }
 async function save(){
   await fetch('/api/settings',{method:'POST',

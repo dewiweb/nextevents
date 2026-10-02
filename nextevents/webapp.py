@@ -204,6 +204,49 @@ def api_today():
                    file="today/index.html")
 
 
+@app.get("/api/today/html")
+def api_today_html():
+    """HTML actuel de today/index.html — chargé par l'éditeur de la
+    webui (mode source)."""
+    p = resolve_out_dir() / "today" / "index.html"
+    if not p.exists():
+        return jsonify(ok=False, error="diapo pas encore générée"), 404
+    return jsonify(ok=True, html=p.read_text("utf-8"))
+
+
+@app.post("/api/today/html")
+def api_today_html_save():
+    """Écrit un HTML retouché dans l'éditeur WYSIWYG, re-rend le PNG
+    et pousse vers les destinations configurées — mêmes effets que
+    POST /api/today, sans passer par les champs du formulaire."""
+    from .today import push_today, render_today_png
+
+    body = request.get_json(force=True, silent=True) or {}
+    h = body.get("html") or ""
+    if "<html" not in h or "</html>" not in h:
+        return jsonify(ok=False, errors=["HTML invalide"]), 400
+    # les fontes base64 embarquées font ~500 ko — cap large au-delà
+    if len(h) > 8 * 1024 * 1024:
+        return jsonify(ok=False, errors=["HTML trop volumineux"]), 413
+    cfg = load_settings()
+    out = resolve_out_dir(cfg)
+    d = out / "today"
+    if not (d / "index.html").exists():
+        return jsonify(
+            ok=False,
+            errors=["générer d'abord la diapo depuis les champs"]), 400
+    (d / "index.html").write_text(h, encoding="utf-8")
+    errors = []
+    try:
+        render_today_png(_slide.SIZES.get(
+            cfg.get("resolution"), _slide.DEFAULT_SIZE), out)
+    except Exception as e:
+        errors.append(f"PNG : {e}")
+    errors += push_today(cfg, out)
+    return jsonify(ok=not errors, errors=errors,
+                   file="today/index.html")
+
+
 @app.get("/today/")
 @app.get("/today/index.html")
 def today_page():
