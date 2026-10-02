@@ -42,9 +42,33 @@ details.card>summary::before{content:'▸';color:#8f8c8a;
 details.card[open]>summary::before{transform:rotate(90deg)}
 details.card>summary::-webkit-details-marker{display:none}
 details.card[open]>summary{margin-bottom:14px}
+.tabs{display:flex;gap:6px;margin:4px 0 16px;flex-wrap:wrap}
+.tabs button{background:#1e1d1c;color:#8f8c8a;border:1px solid #302f2e;
+ border-radius:9px;padding:8px 18px;font-size:13.5px;cursor:pointer;
+ font-family:inherit}
+.tabs button.active{background:#efeae6;color:#141414;
+ border-color:#efeae6;font-weight:600}
+.tabpanel{display:none}
+.tabpanel.active{display:block}
+.cell{position:relative}
+.cell .acts{position:absolute;top:6px;right:6px;display:flex;gap:4px;
+ opacity:0;transition:opacity .15s}
+.cell:hover .acts{opacity:1}
+.cell .acts button{background:rgba(20,20,20,.88);color:#efeae6;
+ border:1px solid #302f2e;border-radius:7px;width:28px;height:28px;
+ font-size:14px;cursor:pointer;padding:0;line-height:1}
+.cell .acts button:hover{background:#e3c2b7;color:#141414}
 </style></head><body>
 <h1><span class="dot">●</span> Nextevents</h1>
 <p class="sub">Diaporama OBS des événements des Champs Libres — PNG 16:9</p>
+
+<nav class="tabs">
+  <button data-tab="gen" class="active">Général</button>
+  <button data-tab="today">Diapo du jour</button>
+  <button data-tab="gal">Galerie</button>
+</nav>
+
+<div class="tabpanel active" id="tab_gen">
 
 <details class="card" id="sec_run" open>
   <summary>Génération</summary>
@@ -200,6 +224,9 @@ details.card[open]>summary{margin-bottom:14px}
   (vide = désactivé).</p>
 </details>
 
+</div>
+<div class="tabpanel" id="tab_today">
+
 <details class="card" id="sec_today" open>
   <summary>Diapo du jour (auditorium) — slide fixe sans visuel :
     titre, intervenants, animateur</summary>
@@ -279,6 +306,9 @@ details.card[open]>summary{margin-bottom:14px}
   </div>
 </details>
 
+</div>
+<div class="tabpanel" id="tab_gal">
+
 <details class="card" id="sec_ls" open>
   <summary>Diapos paysage</summary>
   <div class="row" style="margin-bottom:14px">
@@ -327,7 +357,22 @@ details.card[open]>summary{margin-bottom:14px}
   <pre id="log">—</pre>
 </details>
 
+</div>
+
 <script>
+// onglets — panneau actif persisté en localStorage
+document.querySelectorAll('.tabs button').forEach(b => {
+  b.addEventListener('click', () => {
+    document.querySelectorAll('.tabs button')
+      .forEach(x => x.classList.toggle('active', x === b));
+    document.querySelectorAll('.tabpanel').forEach(p =>
+      p.classList.toggle('active', p.id === 'tab_' + b.dataset.tab));
+    localStorage['tab'] = b.dataset.tab;
+  });
+});
+if (localStorage['tab'])
+  document.querySelector(
+    `.tabs button[data-tab="${localStorage['tab']}"]`)?.click();
 // sections pliables : état persisté en localStorage
 document.querySelectorAll('details.card[id]').forEach(d => {
   const k = 'sec_' + d.id;
@@ -403,19 +448,48 @@ async function refresh(){
       s.slides.length+' diapos · dernière génération : '+last;
   document.getElementById('run').disabled = s.running;
   document.getElementById('log').textContent = s.log.join('\n') || '—';
-  document.getElementById('grid').innerHTML = s.slides.map(n =>
-    `<a href="/slides/${n}" target="_blank"><img loading="lazy"
-      src="/slides/${n}"><div class="caption">${n}</div></a>`).join('');
+  const cell = (n, sub) =>
+    `<div class="cell"><a href="/slides/${sub||''}${n}" target="_blank">
+      <img loading="lazy" src="/slides/${sub||''}${n}"></a>
+     <div class="caption">${n}</div>
+     <div class="acts">
+       <button data-regen="${n}"
+         title="Re-rendre le PNG depuis le HTML">↻</button>
+       <button data-del="${n}" title="Supprimer la diapo">✕</button>
+     </div></div>`;
+  document.getElementById('grid').innerHTML =
+    s.slides.map(n => cell(n, '')).join('');
   const sp = s.slides_portrait || [];
   document.getElementById('card_p').style.display =
     sp.length ? '' : 'none';
-  document.getElementById('grid_p').innerHTML = sp.map(n =>
-    `<a href="/slides/portrait/${n}" target="_blank"><img loading="lazy"
-      src="/slides/portrait/${n}"><div class="caption">${n}</div></a>`
-    ).join('');
+  document.getElementById('grid_p').innerHTML =
+    sp.map(n => cell(n, 'portrait/')).join('');
   if (!document.getElementById('t_ev').options.length) loadTodayEvents();
 }
 async function run(){ await fetch('/api/run',{method:'POST'}); refresh(); }
+
+// actions galerie (délégation — les boutons sont recréés au refresh)
+document.addEventListener('click', async ev => {
+  const regen = ev.target.closest('[data-regen]');
+  const del = ev.target.closest('[data-del]');
+  if (regen) {
+    regen.disabled = true; regen.textContent = '…';
+    const r = await (await fetch(
+      `/api/slides/${regen.dataset.regen}/regen`,
+      {method:'POST'})).json();
+    if (r.error) alert('Régénération : ' + r.error);
+    refresh();
+  } else if (del) {
+    if (!confirm(`Supprimer ${del.dataset.del} ?\n` +
+                 '(PNG + HTML, paysage et portrait — elle reviendra ' +
+                 'à la prochaine génération si l\'événement est ' +
+                 'toujours au programme)')) return;
+    const r = await (await fetch(
+      `/api/slides/${del.dataset.del}`, {method:'DELETE'})).json();
+    if (r.error) alert('Suppression : ' + r.error);
+    refresh();
+  }
+});
 
 // ——— diapo du jour ———
 const BG_CHOICES = [

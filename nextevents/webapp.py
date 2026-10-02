@@ -279,6 +279,81 @@ def slide_file(name):
     return send_from_directory(resolve_out_dir(), name)
 
 
+def _slide_files(name):
+    """Tous les fichiers d'une diapo (PNG + HTML, paysage + portrait)."""
+    from pathlib import Path
+    stem = Path(name).stem
+    out = resolve_out_dir()
+    return [out / name, out / "html" / f"{stem}.html",
+            out / "portrait" / name,
+            out / "portrait" / "html" / f"{stem}.html"]
+
+
+def _resync():
+    """Reproduit la suppression/modification sur les destinations
+    actives (FTP/SMB/local) — les synchros suppriment les extras."""
+    from .sync import sync_ftp, sync_local, sync_smb
+    s = load_settings()
+    out = resolve_out_dir(s)
+    for fn in (sync_ftp, sync_smb, sync_local):
+        try:
+            fn(out, s)
+        except Exception:
+            pass
+
+
+@app.delete("/api/slides/<path:name>")
+def api_slide_delete(name):
+    """Supprime une diapo (PNG + HTML des deux layouts) et resynchronise
+    les partages pour que la diapo y disparaisse aussi."""
+    from pathlib import Path
+    name = Path(name).name
+    if not name.endswith(".png"):
+        return jsonify(error="png attendu"), 400
+    removed = 0
+    for p in _slide_files(name):
+        if p.exists():
+            p.unlink()
+            removed += 1
+    if not removed:
+        return jsonify(error="diapo introuvable"), 404
+    threading.Thread(target=_resync, daemon=True).start()
+    return jsonify(ok=True, removed=removed)
+
+
+@app.post("/api/slides/<path:name>/regen")
+def api_slide_regen(name):
+    """Re-rend le PNG d'une diapo depuis son HTML existant — paysage,
+    et portrait si le HTML portrait existe (même échelle que la
+    génération complète)."""
+    from pathlib import Path
+    name = Path(name).name
+    out = resolve_out_dir()
+    stem = Path(name).stem
+    s = load_settings()
+    size = _slide.SIZES.get(s["resolution"], _slide.DEFAULT_SIZE)
+    rendered = []
+    try:
+        hp = out / "html" / f"{stem}.html"
+        if hp.exists():
+            list(_slide.render_all([(hp, out / name)], size))
+            rendered.append(name)
+        hpp = out / "portrait" / "html" / f"{stem}.html"
+        if hpp.exists():
+            scale = size[0] / 1920
+            psize = tuple(round(d * scale)
+                          for d in _slide.DESIGNS["portrait"])
+            list(_slide.render_all(
+                [(hpp, out / "portrait" / name)], psize))
+            rendered.append("portrait/" + name)
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+    if not rendered:
+        return jsonify(error="html introuvable"), 404
+    threading.Thread(target=_resync, daemon=True).start()
+    return jsonify(ok=True, rendered=rendered)
+
+
 @app.get("/api/slide-list")
 def api_slide_list():
     """Liste des diapos HTML + réglages de lecture, pour le player
