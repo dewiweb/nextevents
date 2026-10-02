@@ -87,6 +87,19 @@ details.card[open]>summary{margin-bottom:14px}
   paysage part ; le portrait est aussi récupérable via le .zip ou la
   galerie ci-dessous.</p>
   <div class="row" style="margin-top:12px">
+    <label>Source des événements
+      <select id="data_source" style="width:auto">
+        <option value="site">Site leschampslibres.fr (scraping)</option>
+        <option value="openagenda">OpenAgenda API v2</option>
+      </select></label>
+    <label>Agenda OpenAgenda
+      <input id="oa_agenda" style="width:170px"
+        placeholder="leschampslibres"></label>
+    <label>Clé API OpenAgenda
+      <input id="oa_api_key" type="password" style="width:200px"
+        placeholder="(vide = export legacy déprécié)"></label>
+  </div>
+  <div class="row" style="margin-top:12px">
     <label>Catégories (slugs, virgules — vide = 5 vitrine)
       <input id="gen_categories" style="width:380px"
         placeholder="rencontres-…, concerts-…"></label>
@@ -116,7 +129,11 @@ details.card[open]>summary{margin-bottom:14px}
   toujours gardée. <b>Items retirés</b> supprime des éléments des
   valeurs composées (séparateur « · ») ; <b>Specs forcées</b> ajoute
   ou remplace une spec sur toutes les diapos. <b>Heures fixes</b> :
-  régénère chaque jour à ces heures, en plus de l'intervalle.</p>
+  régénère chaque jour à ces heures, en plus de l'intervalle.
+  <b>OpenAgenda</b> : données plus riches (horaires précis,
+  accessibilité structurée) — la clé se crée sur openagenda.com ; la
+  couleur des cartes reste lue sur le site, et tout échec OA retombe
+  automatiquement sur le scraping.</p>
 </details>
 
 <details class="card" id="sec_ftp" open>
@@ -339,6 +356,11 @@ async function refresh(){
   setVal('interval', s.settings.interval_min);
   setVal('sched_times', s.settings.sched_times);
   setVal('maxev', s.settings.max_events);
+  setVal('data_source', s.settings.data_source);
+  setVal('oa_agenda', s.settings.oa_agenda);
+  document.getElementById('oa_api_key').placeholder =
+    s.settings.has_oa_key ? '(enregistrée — vide = inchangée)'
+                          : '(vide = export legacy déprécié)';
   setVal('gen_categories', s.settings.gen_categories);
   setVal('next_label', s.settings.next_label);
   setVal('series_map', s.settings.series_map);
@@ -553,6 +575,8 @@ async function save(){
     body:JSON.stringify({
       interval_min:+interval.value, sched_times:sched_times.value,
       max_events:+maxev.value,
+      data_source:data_source.value, oa_agenda:oa_agenda.value,
+      oa_api_key:oa_api_key.value,
       gen_categories:gen_categories.value,
       next_label:next_label.value, series_map:series_map.value,
       specs_show:specs_show.value, spec_drops:spec_drops.value,

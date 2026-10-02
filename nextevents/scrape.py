@@ -47,18 +47,24 @@ CARD_COLORS = {
 # série — double canal, la page série est la source exhaustive.
 SERIES = {"les-grands-temoins": "Les grands témoins"}
 
-SPEC_ICONS = {"Date": "calendar", "Durée": "timer", "Lieu": "pin",
-              "Tarif": "ticket", "Public": "group",
+SPEC_ICONS = {"Date": "calendar", "Séances": "calendar", "Durée": "timer",
+              "Lieu": "pin", "Tarif": "ticket", "Public": "group",
               "Accessibilité": "accessibility"}
 SPRITE_LABELS = {v: k for k, v in SPEC_ICONS.items()}
-SPEC_ORDER = ["Date", "Durée", "Lieu", "Tarif", "Public", "Accessibilité"]
+# collision : « Date » et « Séances » partagent le sprite calendar —
+# l'inversion garde la dernière clé (« Séances »), donc le spec date
+# de la bannière détail s'ajoutait en doublon de « Date » sur la carte.
+# Sur la bannière ce sprite désigne toujours la date : « Date » gagne.
+SPRITE_LABELS["calendar"] = "Date"
+SPEC_ORDER = ["Date", "Séances", "Durée", "Lieu", "Tarif", "Public",
+              "Accessibilité"]
 
 session = requests.Session()
 session.headers["User-Agent"] = UA
 
 
-def get(url):
-    r = session.get(url, timeout=30)
+def get(url, **kw):
+    r = session.get(url, timeout=30, **kw)
     r.raise_for_status()
     return r
 
@@ -113,6 +119,52 @@ def event_dates(ev):
     return None, None
 
 
+def _norm_title(t):
+    """Normalisation partagée group_sessions / site_card_index."""
+    return re.sub(r"[^a-z0-9à-ÿ]+", "", (t or "").lower())
+
+
+def site_card_index(categories=None):
+    """{titre normalisé → url de la page détail du site} construit
+    depuis les cartes des pages catégories. En source OpenAgenda, les
+    URLs OA ≠ URLs du site : cette table permet de retrouver la page
+    détail (couleur de bannière) par le titre."""
+    wanted = (set(categories) if categories is not None
+              else set(DEFAULT_CATEGORIES))
+    index = {}
+    for _, slug in CATEGORIES:
+        if slug not in wanted:
+            continue
+        list_url = f"{BASE}/au-programme/categorie/{slug}"
+        page = 1
+        while page <= 4:
+            url = list_url if page == 1 else f"{list_url}?page={page}"
+            try:
+                soup = BeautifulSoup(get(url).text, "lxml")
+            except Exception:
+                break
+            cards = soup.select("div.v-event")
+            if not cards:
+                break
+            for card in cards:
+                ev = parse_card(card)
+                if ev:
+                    index.setdefault(_norm_title(ev["title"]), ev["url"])
+            page += 1
+    return index
+
+
+def banner_color(url):
+    """Couleur éditoriale de la page détail (modifieur v-banner--X)."""
+    try:
+        soup = BeautifulSoup(get(url).text, "lxml")
+    except Exception:
+        return None
+    banner = soup.select_one(".v-banner")
+    return _color_from_classes(
+        banner.get("class") if banner else [], "v-banner")
+
+
 def group_sessions(events, next_label=None):
     """Fusionne les séances multiples d'un même événement : le site
     éclate chaque date en carte séparée (animations, ateliers, visites
@@ -124,9 +176,7 @@ def group_sessions(events, next_label=None):
         next_label = DEFAULT_NEXT_LABEL
     groups = {}
     for ev in events:
-        key = re.sub(r"[^a-z0-9à-ÿ]+", "", (ev.get("title") or "")
-                     .lower())
-        groups.setdefault(key, []).append(ev)
+        groups.setdefault(_norm_title(ev.get("title")), []).append(ev)
     out = []
     for g in groups.values():
         # la carte de la prochaine séance porte image/tag/couleur ;

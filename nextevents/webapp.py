@@ -31,6 +31,7 @@ def api_status():
     s = load_settings()
     has_pass = bool(s.pop("ftp_pass"))
     has_smb_pass = bool(s.pop("smb_pass"))
+    has_oa_key = bool(s.pop("oa_api_key"))
     sl = slides()
     sl_p = slides_portrait()
     lr = state["last_run"]
@@ -46,7 +47,8 @@ def api_status():
         slides=sl,
         slides_count=len(sl),
         slides_portrait=sl_p,
-        settings={**s, "has_pass": has_pass, "has_smb_pass": has_smb_pass},
+        settings={**s, "has_pass": has_pass, "has_smb_pass": has_smb_pass,
+                  "has_oa_key": has_oa_key},
     )
 
 
@@ -63,7 +65,7 @@ def api_settings():
     for k, d in DEFAULTS.items():
         if k not in body:
             continue
-        if k in ("ftp_pass", "smb_pass") and body[k] == "":
+        if k in ("ftp_pass", "smb_pass", "oa_api_key") and body[k] == "":
             continue  # vide = inchangé
         if k == "resolution" and body[k] not in _slide.SIZES:
             continue

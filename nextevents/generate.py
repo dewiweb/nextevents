@@ -8,8 +8,9 @@ from PIL import Image
 from .media import download_image, ensure_fonts
 from .paths import OUT_DIR
 from .scrape import (
-    DEFAULT_CATEGORIES, group_sessions, list_events, mark_series,
-    parse_detail, parse_series_map,
+    DEFAULT_CATEGORIES, _norm_title, banner_color, group_sessions,
+    list_events, mark_series, parse_detail, parse_series_map,
+    site_card_index,
 )
 from .settings import parse_kv
 from .slide import (
@@ -119,9 +120,37 @@ def generate(out_dir=None, max_events=0, pages=99, cfg=None, size=DEFAULT_SIZE):
     if cfg and (cfg.get("gen_categories") or "").strip():
         cats = [c.strip() for c in cfg["gen_categories"].split(",")
                 if c.strip()]
-    events = list_events(max_pages=pages, categories=cats)
-    # une carte par séance sur le site → une diapo par événement
-    events = group_sessions(events, (cfg or {}).get("next_label"))
+    series_map = parse_series_map((cfg or {}).get("series_map")) or None
+    use_oa = cfg and cfg.get("data_source") == "openagenda"
+    if use_oa:
+        try:
+            from .oa import filter_categories, oa_list_events
+            events = filter_categories(oa_list_events(cfg), cats)
+            # la couleur de bannière est un choix éditorial du site,
+            # absent d'OA — on la réinjecte via la page détail
+            # retrouvée par titre (URLs OA ≠ URLs du site)
+            idx = site_card_index(cats)
+            def _col(e):
+                u = idx.get(_norm_title(e.get("title")))
+                if u:
+                    c = banner_color(u)
+                    if c:
+                        e["color"] = c
+                return e
+            with ThreadPoolExecutor(max_workers=6) as ex:
+                events = list(ex.map(_col, events))
+            events.sort(key=lambda e: (
+                0 if e.get("pinned") else 1,
+                e.get("_dt") or (9999, 12, 31, 23, 59)))
+        except Exception as e:
+            # OA injoignable/clé invalide → repli site
+            print(f"  ! OpenAgenda KO ({e}) — repli scraping du site")
+            use_oa = False
+    if not use_oa:
+        events = list_events(max_pages=pages, categories=cats)
+        # une carte par séance sur le site → une diapo par événement
+        events = group_sessions(events, (cfg or {}).get("next_label"))
+        mark_series(events, series_map)
     if max_events:
         events = events[:max_events]
     print(f"  {len(events)} événements trouvés")
@@ -131,10 +160,15 @@ def generate(out_dir=None, max_events=0, pages=99, cfg=None, size=DEFAULT_SIZE):
         )
 
     print("2/5 Pages de détail + images…")
-    with ThreadPoolExecutor(max_workers=6) as ex:
-        events = list(ex.map(lambda e: download_image(parse_detail(e)), events))
-    mark_series(events, parse_series_map((cfg or {}).get("series_map"))
-                  or None)
+    if use_oa:
+        # OA donne déjà desc/speakers/image — on télécharge juste
+        # l'image, pas de page détail à scraper
+        with ThreadPoolExecutor(max_workers=6) as ex:
+            events = list(ex.map(download_image, events))
+    else:
+        with ThreadPoolExecutor(max_workers=6) as ex:
+            events = list(
+                ex.map(lambda e: download_image(parse_detail(e)), events))
     _apply_spec_prefs(events, cfg)
 
     # métadonnées pour la « diapo du jour » de la webui

@@ -20,6 +20,9 @@ DEFAULTS = {
     "spec_drops": "",          # items retirés des specs, à virgules
     "next_label": "",          # préfixe récurrents (vide = défaut)
     "series_map": "",          # « slug = Libellé » séries suivies
+    "data_source": "site",     # site | openagenda
+    "oa_api_key": "",          # clé API OpenAgenda v2
+    "oa_agenda": "leschampslibres",
     "max_events": 0,
     "resolution": "uhd",
     "gen_landscape": 1,
