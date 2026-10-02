@@ -164,6 +164,10 @@ details.card[open]>summary{margin-bottom:14px}
     <div style="flex:1;min-width:430px;display:flex;flex-direction:column;
       gap:10px">
       <label>Titre <input id="t_title" style="width:100%"></label>
+      <label>Sous-titre — ligne(s) sous le titre (réalisateur, année,
+        production… ; une ligne par mention, vide = rien d'affiché)
+        <textarea id="t_sub" rows="1"
+          placeholder="Un film de Jane Doe, 2025, prod. Exemple Films"></textarea></label>
       <div id="t_speakers" style="display:flex;flex-direction:column;
         gap:8px"></div>
       <div class="row">
@@ -402,6 +406,7 @@ async function prefillToday(){
     e.series ? 'Série : '+e.series+' — modèle com appliqué' : '';
   if (e.series) { todayBg = '#16203f'; buildBgPalette(); }
   document.getElementById('t_title').value = e.title || '';
+  document.getElementById('t_sub').value = '';
   document.getElementById('t_mod').value = e.moderator || '';
   document.getElementById('t_note').value = e.note || '';
   document.getElementById('t_access').value = e.access || '';
@@ -425,7 +430,8 @@ async function genToday(){
   const r = await (await fetch('/api/today',{method:'POST',
     headers:{'Content-Type':'application/json'},
     body: JSON.stringify({
-      title:t_title.value, moderator:t_mod.value, speakers,
+      title:t_title.value, subtitle:t_sub.value,
+      moderator:t_mod.value, speakers,
       note:t_note.value, access:t_access.value,
       tag:ev.tag||'', color:ev.color||null, bg:todayBg,
       series:ev.series||''})})).json();

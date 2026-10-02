@@ -16,6 +16,9 @@
     $badge_html                 pastille catégorie ou rond de série
     $h1_size                    taille du titre selon sa longueur
     $title                      titre (échappé HTML)
+    $subtitle_html              ligne(s) libres sous le titre —
+                                réalisateur, année, production…
+                                (vide = aucun espace occupé)
     $speakers_label             « Avec » (vide si pas d'intervenant)
     $speakers_html              blocs intervenant : nom + qualité
     $footer_html                pied de page : « animé par » + notes
@@ -45,6 +48,8 @@ body{font-family:'Oldschool Grotesk',Arial,sans-serif;color:$light;
 h1{font-size:80px;font-weight:500;line-height:1.08;letter-spacing:-.01em;
  margin-top:36px;max-width:1700px;text-wrap:balance;display:-webkit-box;
  -webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.subtitle{margin-top:20px;font-size:36px;line-height:1.3;color:$muted;
+ max-width:1500px}
 .rule{height:3px;background:$accent;border-radius:2px;margin-top:44px;
  width:180px}
 .spacer{flex:1 1 0;min-height:0}
@@ -82,6 +87,7 @@ h1{font-size:80px;font-weight:500;line-height:1.08;letter-spacing:-.01em;
 .card.gt .spk-label{color:#7f93b8}
 .card.gt .speaker .name{color:#a8bce0}
 .card.gt .speaker .qual{color:#7f93b8}
+.card.gt .subtitle{color:#8aa0c8}
 .card.gt .mod{color:#8aa0c8;border-top-color:rgba(159,180,216,.25)}
 .card.gt .mod-line b{color:#c9d6ee}
 
@@ -92,6 +98,7 @@ h1{font-size:80px;font-weight:500;line-height:1.08;letter-spacing:-.01em;
   $badge_html
   <div class="spacer"></div>
   <h1 style="font-size:${h1_size}px">$title</h1>
+  $subtitle_html
   <div class="rule"></div>
   <div class="middle">
     <div class="spk-label">$speakers_label</div>

@@ -168,6 +168,7 @@ def api_today():
     body = request.get_json(force=True, silent=True) or {}
     data = {
         "title": str(body.get("title") or "").strip(),
+        "subtitle": str(body.get("subtitle") or "").strip(),
         "tag": str(body.get("tag") or "").strip(),
         "color": body.get("color") or None,
         "bg": str(body.get("bg") or "").strip(),

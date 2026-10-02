@@ -105,6 +105,12 @@ def today_html(data, fonts):
     # espace insécable avant la ponctuation double : évite un « ? »
     # orphelin en fin de ligne et respecte la typographie française
     title_esc = re.sub(r"\s+([?!:;»])", "&nbsp;\\1", html.escape(title))
+    # ligne(s) libres sous le titre — réalisateur, année, production…
+    # pour les projections ; vide = rien d'affiché
+    sub_html = "".join(
+        f'<div class="subtitle">{html.escape(ln)}</div>'
+        for ln in (data.get("subtitle") or "").splitlines()
+        if ln.strip())
     n = len(title)
     return _template().substitute(
         font_regular=fonts["regular"],
@@ -118,6 +124,7 @@ def today_html(data, fonts):
         badge_html=badge_html,
         h1_size=80 if n < 42 else 64 if n < 80 else 52,
         title=title_esc,
+        subtitle_html=sub_html,
         speakers_label="Avec" if speakers_html else "",
         speakers_html=speakers_html,
         footer_html=footer_html,
