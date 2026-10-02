@@ -27,7 +27,22 @@ publie vers le poste OBS, via un partage réseau (NAS ou poste OBS).
   - **FTP** actif sur le NAS
   - ou le NAS **monté directement** sur le serveur (voir plus bas)
 
-## 1. Build & lancement
+## 1. Lancement
+
+**Option recommandée — image pré-construite (CI)** : à chaque push sur
+`main`, GitHub Actions publie `ghcr.io/dewiweb/nextevents:latest`.
+Le `docker-compose.yml` du dépôt la consomme directement :
+
+```bash
+git clone https://github.com/dewiweb/nextevents.git
+cd nextevents
+mkdir -p data          # diapos + settings.json persistés ici
+docker compose up -d   # port 8095
+```
+
+Mise à jour ensuite : `./update.sh` (pull + recreate).
+
+**Option build local** (si la CI n'est pas utilisable) :
 
 ```bash
 docker build -t nextevents .
@@ -39,7 +54,8 @@ docker run -d --name nextevents --restart unless-stopped \
   nextevents
 ```
 
-L'UI est alors accessible sur `http://<serveur>:8080`.
+L'UI est alors accessible sur `http://<serveur>:8080` (`:8095` avec le
+compose).
 
 > `-v nextevents-data:/data` crée un volume Docker nommé : les diapos
 > locales et `settings.json` y sont persistés. Pour utiliser un dossier
