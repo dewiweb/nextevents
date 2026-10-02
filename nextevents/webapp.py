@@ -1,7 +1,9 @@
 """Application Flask : page de contrôle (assets/webui.html) + API."""
 
 import io
+import json
 import threading
+from pathlib import Path
 from datetime import datetime
 
 from flask import Flask, jsonify, request, send_file, send_from_directory
@@ -289,9 +291,40 @@ def _slide_files(name):
             out / "portrait" / "html" / f"{stem}.html"]
 
 
+def _rewrite_manifests():
+    """Réécrit manifest.txt (paysage + portrait) après une retouche —
+    les synchros le poussent en dernier comme marqueur d'intégrité."""
+    out = resolve_out_dir()
+    for d in (out, out / "portrait"):
+        if d.exists():
+            (d / "manifest.txt").write_text(
+                "\n".join(p.name for p in sorted(d.glob("*.png"))) + "\n",
+                encoding="utf-8")
+
+
+def _drop_from_events_json(name):
+    """Retire l'événement correspondant de events.json (liste « diapo
+    du jour »). events.json suit l'ordre de génération → l'index
+    permet de recalculer le nom de diapo attendu."""
+    out = resolve_out_dir()
+    meta = out / "events.json"
+    if not meta.exists():
+        return
+    try:
+        events = json.loads(meta.read_text(encoding="utf-8"))
+    except Exception:
+        return
+    kept = [e for i, e in enumerate(events)
+            if _slide.slide_name(e, i) != Path(name).stem]
+    if len(kept) < len(events):
+        meta.write_text(json.dumps(kept, ensure_ascii=False, indent=2),
+                        encoding="utf-8")
+
+
 def _resync():
     """Reproduit la suppression/modification sur les destinations
     actives (FTP/SMB/local) — les synchros suppriment les extras."""
+    _rewrite_manifests()
     from .sync import sync_ftp, sync_local, sync_smb
     s = load_settings()
     out = resolve_out_dir(s)
@@ -317,6 +350,7 @@ def api_slide_delete(name):
             removed += 1
     if not removed:
         return jsonify(error="diapo introuvable"), 404
+    _drop_from_events_json(name)
     threading.Thread(target=_resync, daemon=True).start()
     return jsonify(ok=True, removed=removed)
 
