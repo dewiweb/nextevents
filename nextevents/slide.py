@@ -154,6 +154,21 @@ def slide_name(ev, idx):
     return f"slide-{prefix}-{slugify(ev['title'])}"
 
 
+def slide_names(events):
+    """Noms de fichiers uniques pour les événements, dans l'ordre du
+    rendu — collision date+titre : suffixe « -i ». Source unique du
+    nommage : _render_set, events.json (clé « slide ») et la webui
+    s'accordent dessus au lieu de recalculer slide_name(e, i)."""
+    used, out = set(), []
+    for i, ev in enumerate(events, 1):
+        name = slide_name(ev, i)
+        while name in used:
+            name += f"-{i}"
+        used.add(name)
+        out.append(name)
+    return out
+
+
 def render_png_firefox(html_path, png_path, size=DEFAULT_SIZE):
     """Repli : firefox --screenshot avec zoom + fenêtre aux dimensions
     voulues (le HTML est dessiné pour 1920x1080 paysage ou

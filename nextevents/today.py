@@ -13,7 +13,7 @@ from string import Template
 from .media import ensure_fonts
 from .paths import ASSET_DIR
 from .settings import OUT_DIR
-from .scrape import BASE, CARD_COLORS, SERIES
+from .scrape import BASE, CARD_COLORS
 
 _TEMPLATE = None
 _TEMPLATE_QR = None
@@ -130,6 +130,13 @@ def today_html(data, fonts):
         variant=" gt" if series else "",
         badge_html=badge_html,
         h1_size=80 if n < 42 else 64 if n < 80 else 52,
+        # nom de série : taille dégressive pour tenir dans le rond
+        # 250px (≈200px utiles) — le gabarit « Les grands témoins »
+        # reste à 36px
+        gt_size=(36 if len(series or "") <= 20
+                 else 30 if len(series or "") <= 30
+                 else 22 if len(series or "") <= 44
+                 else 18 if len(series or "") <= 60 else 15),
         title=title_esc,
         subtitle_html=sub_html,
         speakers_label="Avec" if speakers_html else "",
@@ -161,23 +168,40 @@ def _img_uri(path_str):
             + base64.b64encode(p.read_bytes()).decode())
 
 
-def _series_url(series, series_map=None):
-    """URL de la page série sur le site. Les clés de series_map sont des
-    slugs de page série *ou* des keywords OA : on essaie chaque clé dont
-    le libellé correspond, la première qui répond gagne. Retombe sur la
-    page programme générique."""
-    from .scrape import get
-    cands = [k for k, l in (series_map or SERIES).items() if l == series]
+_SERIES_URL_CACHE = {}
+
+
+def _series_url(series, series_map_text=""):
+    """URL de la page série sur le site. Les identifiants sont des
+    slugs de page série *ou* des keywords OA : on essaie chaque clé
+    dont le libellé correspond (series_map d'abord, puis les tables
+    par défaut — résolution additive comme series_brand), la première
+    qui répond gagne. Retombe sur la page programme générique.
+    Le résultat est mis en cache pour la durée du process : le sondage
+    HTTP ne se paie qu'une fois par série."""
+    from .scrape import get, series_tables
+    key = (series, series_map_text or "")
+    if key in _SERIES_URL_CACHE:
+        return _SERIES_URL_CACHE[key]
+    seen, cands = set(), []
+    for rows in series_tables(series_map_text):
+        for k, l, _ in rows:
+            if l == series and k not in seen:
+                seen.add(k)
+                cands.append(k)
+    url = f"{BASE}/au-programme"
     for slug in cands:
         try:
             get(f"{BASE}/au-programme/{slug}")
-            return f"{BASE}/au-programme/{slug}"
+            url = f"{BASE}/au-programme/{slug}"
+            break
         except Exception:
             continue  # keyword OA sans page série équivalente
-    return f"{BASE}/au-programme"
+    _SERIES_URL_CACHE[key] = url
+    return url
 
 
-def qr_html(series, bg, fonts, series_map=None):
+def qr_html(series, bg, fonts, series_map=""):
     """Slide QR d'une série (modèle com : « Retrouvez … en scannant le
     QR code ») — même fond sombre que la diapo du jour."""
     url = _series_url(series, series_map)
@@ -220,9 +244,7 @@ def write_today(data, out_dir=None):
     dest.write_text(today_html(data, fonts), encoding="utf-8")
     if series:
         from .settings import load_settings
-        from .scrape import parse_series_map
-        smap = parse_series_map(
-            (load_settings() or {}).get("series_map", "")) or None
+        smap = (load_settings() or {}).get("series_map", "")
         (d / "qr.html").write_text(
             qr_html(series, bg, fonts, smap), encoding="utf-8")
     else:
@@ -251,75 +273,10 @@ def render_today_png(size, out_dir=None):
     list(render_all(jobs, size=size))
     if not png.exists():
         raise RuntimeError("rendu de la diapo du jour impossible")
-    return png
-
-
-def push_today(cfg, out_dir=None):
-    """Pousse les fichiers de today/ (index.html, index.png) vers le
-    sous-dossier today/ des destinations configurées (SMB/FTP).
-    Renvoie une liste d'erreurs (vide = tout OK)."""
-    out = Path(out_dir) if out_dir else OUT_DIR
+    # manifeste du jeu — les synchros le poussent en dernier comme
+    # marqueur d'intégrité, comme pour le diaporama principal
     d = out / "today"
-    files = [p for p in sorted(d.glob("*")) if p.is_file()] \
-        if d.exists() else []
-    if not files:
-        return ["today/ absent"]
-    errors = []
-
-    smb_host = (cfg.get("smb_host") or "").strip()
-    smb_share = (cfg.get("smb_share") or "").strip()
-    if smb_host and smb_share:
-        try:
-            from smbclient import makedirs, open_file, register_session
-            register_session(
-                smb_host,
-                username=cfg.get("smb_user") or "",
-                password=cfg.get("smb_pass") or "",
-            )
-            base = f"\\\\{smb_host}\\{smb_share}"
-            if cfg.get("smb_path"):
-                base += "\\" + str(cfg["smb_path"]).strip("/\\")
-            d = base + "\\today"
-            makedirs(d, exist_ok=True)
-            for f in files:
-                with open(f, "rb") as fh, \
-                        open_file(d + "\\" + f.name, "wb") as dst:
-                    dst.write(fh.read())
-        except Exception as e:
-            errors.append(f"SMB : {e}")
-
-    if (cfg.get("ftp_host") or "").strip():
-        try:
-            import ftplib
-            cls = ftplib.FTP_TLS if cfg.get("ftp_tls") else ftplib.FTP
-            ftp = cls()
-            ftp.connect(cfg["ftp_host"].strip(),
-                        int(cfg.get("ftp_port") or 21), timeout=30)
-            try:
-                ftp.login(cfg.get("ftp_user") or "", cfg.get("ftp_pass") or "")
-                if cfg.get("ftp_tls"):
-                    ftp.prot_p()
-                for part in [p for p in
-                             (cfg.get("ftp_path") or "/").split("/") if p]:
-                    try:
-                        ftp.mkd(part)
-                    except ftplib.error_perm:
-                        pass
-                    ftp.cwd(part)
-                try:
-                    ftp.mkd("today")
-                except ftplib.error_perm:
-                    pass
-                ftp.cwd("today")
-                for f in files:
-                    with open(f, "rb") as fh:
-                        ftp.storbinary("STOR " + f.name, fh)
-            finally:
-                try:
-                    ftp.quit()
-                except Exception:
-                    ftp.close()
-        except Exception as e:
-            errors.append(f"FTP : {e}")
-
-    return errors
+    (d / "manifest.txt").write_text(
+        "\n".join(p.name for p in sorted(d.glob("*.png"))) + "\n",
+        encoding="utf-8")
+    return png

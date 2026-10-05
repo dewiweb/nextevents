@@ -85,12 +85,28 @@
         <textarea id="series_map" rows="2"
           placeholder="les-grands-temoins = Les grands témoins"></textarea>
       </label>
-      <div class="wide" style="display:flex;align-items:center;gap:10px">
+      <div class="wide" style="display:flex;align-items:center;gap:10px;
+        flex-wrap:wrap">
+        <button type="button" class="ghost sm"
+          onclick="detectSeries()">Détecter les séries…</button>
+        <label class="sub" style="display:flex;align-items:center;
+          gap:6px">logo pour
+          <select id="logo_target" style="max-width:220px"></select>
+        </label>
         <button type="button" class="ghost sm"
           onclick="logo_up.click()">Uploader un logo de série…</button>
         <input id="logo_up" type="file" accept="image/*" hidden
           onchange="uploadLogo(this)">
+        <span id="series_msg" class="sub"></span>
         <span id="logo_up_msg" class="sub"></span>
+      </div>
+      <div id="series_detect" class="catgrid wide" style="display:none">
+      </div>
+      <div class="wide" id="series_detect_acts" style="display:none">
+        <button type="button" class="ghost sm" onclick="addDetected()">
+          Ajouter la sélection aux séries suivies</button>
+        <button type="button" class="ghost sm" onclick="closeDetect()">
+          Fermer</button>
       </div>
       <div class="sub wide" style="margin:0">Catégories : slugs des pages
       <code>/au-programme/categorie/&lt;slug&gt;</code>.
@@ -214,6 +230,10 @@
     <label>Événement
       <select id="t_ev" style="width:420px" onchange="prefillToday()">
       </select></label>
+    <label>Série — si l'événement n'est pas dans la liste
+      <select id="t_series_sel" style="width:220px">
+        <option value="">— aucune —</option>
+      </select></label>
     <span class="status" id="t_series" style="color:#a8bce0"></span>
   </div>
   <div class="row" style="align-items:flex-start;margin-top:14px">
@@ -224,6 +244,7 @@
         production… ; une ligne par mention, vide = rien d'affiché)
         <textarea id="t_sub" rows="1"
           placeholder="Un film de Jane Doe, 2025, prod. Exemple Films"></textarea></label>
+      <span class="lab" style="margin-bottom:-2px">Intervenants</span>
       <div id="t_speakers" style="display:flex;flex-direction:column;
         gap:8px"></div>
       <div class="row">
@@ -253,9 +274,12 @@
     <div style="flex:1.15;min-width:520px;display:flex;
       flex-direction:column;gap:10px">
       <div class="row">
-        <button onclick="genToday()">Générer la diapo du jour</button>
+        <button id="t_genbtn" onclick="genToday()">
+          Générer la diapo du jour</button>
         <button class="ghost" id="t_savebtn" onclick="saveTodayHtml()"
           style="display:none">Enregistrer les retouches</button>
+        <button class="ghost" id="t_delbtn" onclick="delToday()"
+          style="display:none">Retirer</button>
         <button class="ghost" id="t_srcbtn" onclick="toggleTodaySrc()"
           style="display:none">Source HTML</button>
         <a class="link" id="t_full" href="/today/index.html"

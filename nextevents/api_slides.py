@@ -39,8 +39,9 @@ def _rewrite_manifests():
 
 def _drop_from_events_json(name):
     """Retire l'événement correspondant de events.json (liste « diapo
-    du jour »). events.json suit l'ordre de génération → l'index
-    permet de recalculer le nom de diapo attendu."""
+    du jour »). La clé « slide » porte le nom de fichier calculé à la
+    génération ; pour un vieux events.json on retombe sur le recalcul
+    par index (à partir de 1 comme _render_set)."""
     out = resolve_out_dir()
     meta = out / "events.json"
     if not meta.exists():
@@ -50,7 +51,8 @@ def _drop_from_events_json(name):
     except Exception:
         return
     kept = [e for i, e in enumerate(events)
-            if _slide.slide_name(e, i) != Path(name).stem]
+            if (e.get("slide") or _slide.slide_name(e, i + 1))
+            != Path(name).stem]
     if len(kept) < len(events):
         meta.write_text(json.dumps(kept, ensure_ascii=False, indent=2),
                         encoding="utf-8")
@@ -60,14 +62,10 @@ def _resync():
     """Reproduit la suppression/modification sur les destinations
     actives (FTP/SMB/local) — les synchros suppriment les extras."""
     _rewrite_manifests()
-    from .sync import sync_ftp, sync_local, sync_smb
+    from .sync import push_all
     s = load_settings()
-    out = resolve_out_dir(s)
-    for fn in (sync_ftp, sync_smb, sync_local):
-        try:
-            fn(out, s)
-        except Exception:
-            pass
+    for e in push_all(resolve_out_dir(s), s):
+        print(f"  ! resynchro : {e}")
 
 
 @bp.delete("/api/slides/<path:name>")

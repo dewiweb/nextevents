@@ -234,9 +234,12 @@ def _base_map(e, cat_value, cat_label, public_label, kws, cond, timings,
     if access:
         specs["Accessibilité"] = access.replace("\n", " · ")
 
-    series = next((lbl for k, lbl
-                   in (series_map or SERIES_KEYWORDS).items()
-                   if k in kws), "")
+    # série : la clé configurée peut être un slug de page, un libellé
+    # ou le keyword lui-même — égalité après normalisation, puis
+    # sous-chaîne ≥4 (« nosfuturs » ⊂ « nosfuturs2027 »)
+    series = next(
+        (lbl for k, lbl in (series_map or SERIES_KEYWORDS).items()
+         if _kw_match(k, kws)), "")
 
     return {
         "title": title, "url": url, "tag": tag, "color": None,
@@ -451,6 +454,18 @@ def _norm(s):
                    if not unicodedata.combining(c) and c.isalnum()).lower()
 
 
+def _kw_match(key, kws):
+    """La clé d'une série configurée correspond-elle à l'un des
+    keywords OA de l'événement ? Égalité normalisée, puis sous-chaîne
+    ≥4 caractères."""
+    nk = _norm(key)
+    return any(
+        nk == _norm(kw)
+        or (4 <= len(nk) and 4 <= len(_norm(kw))
+            and (nk in _norm(kw) or _norm(kw) in nk))
+        for kw in kws)
+
+
 def detect_series(agenda="leschampslibres"):
     """Détecte les séries éditoriales candidates dans les deux sources :
     - keywords OA non techniques (export legacy, pas de clé requise)
@@ -459,6 +474,7 @@ def detect_series(agenda="leschampslibres"):
     Retourne une liste [(identifiant, libellé)] triée ; l'UI propose de
     les ajouter au champ series_map (l'utilisateur trie/retouche)."""
     from collections import Counter
+    from concurrent.futures import ThreadPoolExecutor
     from .scrape import BASE, get, list_events
 
     out = {}   # identifiant → libellé
@@ -485,15 +501,19 @@ def detect_series(agenda="leschampslibres"):
     # — pages série du site : liens éditoriaux dans les pages détail —
     links = Counter()
     try:
-        for e in list_events(max_pages=1):      # ~40 cartes, toutes catégories
+        cards = list_events(max_pages=1)     # ~40 cartes, toutes catégories
+        def _page(e):
             try:
-                h = get(e["url"]).text
+                return get(e["url"]).text
             except Exception:
-                continue
-            for m in re.findall(r'href="(/au-programme/[^"?#]+)"', h):
-                if "/categorie/" in m or re.search(r"/\d+", m):
-                    continue  # liste catégorie ou événement, pas une série
-                links[m.rsplit("/", 1)[-1]] += 1
+                return ""
+        with ThreadPoolExecutor(max_workers=6) as ex:
+            pages = ex.map(_page, cards)
+            for h in pages:
+                for m in re.findall(r'href="(/au-programme/[^"?#]+)"', h):
+                    if "/categorie/" in m or re.search(r"/\d+", m):
+                        continue  # liste catégorie ou événement
+                    links[m.rsplit("/", 1)[-1]] += 1
     except Exception as e:
         print(f"  ! scan pages série KO : {e}")
 
@@ -509,13 +529,14 @@ def detect_series(agenda="leschampslibres"):
         except Exception:
             pass
         out[slug] = label
-        # le keyword OA correspondant s'il existe (sous-chaîne
-        # normalisée) → même série, autre source
+        # les keywords OA correspondants (sous-chaîne normalisée) sont
+        # absorbés par la ligne du slug — le matching keyword↔série
+        # utilise la même règle, une seule entrée suffit
         for k in list(kws):
-            if _norm(k) in _norm(slug) or _norm(slug) in _norm(k):
-                out.setdefault(k, label)
+            if len(_norm(k)) >= 4 and (
+                    _norm(k) in _norm(slug)
+                    or _norm(slug) in _norm(k)):
                 del kws[k]
-                break
 
     for k in kws:   # keywords sans page série associée sur le site
         out[k] = re.sub(r"[-_]+", " ", k).strip().capitalize()

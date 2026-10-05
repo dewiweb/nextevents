@@ -88,7 +88,8 @@ def api_today_event(i):
 def api_today():
     """Génère today/index.html depuis les champs édités dans la webui,
     puis pousse vers les destinations configurées."""
-    from .today import push_today, render_today_png, write_today
+    from .sync import push_all
+    from .today import render_today_png, write_today
 
     body = request.get_json(force=True, silent=True) or {}
     data = _today_data(body)
@@ -103,7 +104,7 @@ def api_today():
             cfg.get("resolution"), _slide.DEFAULT_SIZE), out)
     except Exception as e:
         errors.append(f"PNG : {e}")
-    errors += push_today(cfg, out)
+    errors += push_all(out, cfg)
     return jsonify(ok=not errors, errors=errors,
                    file="today/index.html")
 
@@ -123,6 +124,32 @@ def api_today_preview():
         return jsonify(ok=False, errors=[str(e)])
 
 
+@bp.delete("/api/today")
+def api_today_delete():
+    """Retire la diapo du jour : today/ vidé en local puis resynchro —
+    les synchros suppriment les extras distants (le dossier vide et le
+    manifeste vide restent, pour que le retrait se propage)."""
+    import threading
+
+    out = resolve_out_dir()
+    d = out / "today"
+    if not d.is_dir():
+        return jsonify(ok=False, error="rien à retirer"), 404
+    for p in d.iterdir():
+        if p.is_file():
+            p.unlink()
+    (d / "manifest.txt").write_text("", encoding="utf-8")
+    s = load_settings()
+
+    def _rs():
+        from .sync import push_all
+        for e in push_all(resolve_out_dir(s), s):
+            print(f"  ! resynchro : {e}")
+
+    threading.Thread(target=_rs, daemon=True).start()
+    return jsonify(ok=True)
+
+
 @bp.get("/api/today/html")
 def api_today_html():
     """HTML actuel de today/index.html (ou qr.html) — chargé par
@@ -138,7 +165,8 @@ def api_today_html_save():
     """Écrit un HTML retouché dans l'éditeur WYSIWYG, re-rend le PNG
     et pousse vers les destinations configurées — mêmes effets que
     POST /api/today, sans passer par les champs du formulaire."""
-    from .today import push_today, render_today_png
+    from .sync import push_all
+    from .today import render_today_png
 
     body = request.get_json(force=True, silent=True) or {}
     h = body.get("html") or ""
@@ -162,7 +190,7 @@ def api_today_html_save():
             cfg.get("resolution"), _slide.DEFAULT_SIZE), out)
     except Exception as e:
         errors.append(f"PNG : {e}")
-    errors += push_today(cfg, out)
+    errors += push_all(out, cfg)
     return jsonify(ok=not errors, errors=errors,
                    file="today/" + fname)
 

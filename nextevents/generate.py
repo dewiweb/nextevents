@@ -11,11 +11,12 @@ from .paths import OUT_DIR
 from .scrape import (
     DEFAULT_CATEGORIES, _norm_title, group_sessions,
     list_events, mark_series, parse_detail, parse_series_map,
-    site_card_index, site_detail_enrich, series_event_ids, SERIES,
+    site_card_index, site_detail_enrich, series_event_ids_for, SERIES,
+    _unique_series_rows,
 )
 from .settings import parse_kv
 from .slide import (
-    DESIGNS, render_all, slide_html, slide_name, SIZES, DEFAULT_SIZE,
+    DESIGNS, render_all, slide_html, slide_names, SIZES, DEFAULT_SIZE,
 )
 from .sync import sync_ftp, sync_local, sync_smb
 
@@ -30,12 +31,8 @@ def _render_set(events, fonts, dest, size, orientation="landscape"):
     # ne re-rendre que les diapos nouvelles ou modifiées ; supprimer
     # celles qui n'existent plus (sobriété : pas de wipe systématique)
     to_render, expected_png, expected_html = [], set(), set()
-    used = set()
-    for i, ev in enumerate(events, start=1):
-        name = slide_name(ev, i)
-        while name in used:  # collision date+titre : suffixe
-            name += f"-{i}"
-        used.add(name)
+    for i, (ev, name) in enumerate(zip(events, slide_names(events)),
+                                   start=1):
         expected_png.add(f"{name}.png")
         expected_html.add(f"{name}.html")
         hp, pp = html_dir / f"{name}.html", dest / f"{name}.png"
@@ -122,6 +119,7 @@ def generate(out_dir=None, max_events=0, pages=99, cfg=None, size=DEFAULT_SIZE):
         cats = [c.strip() for c in cfg["gen_categories"].split(",")
                 if c.strip()]
     series_map = parse_series_map((cfg or {}).get("series_map")) or None
+    series_tbl = series_map or SERIES   # table de détection (clé→libellé)
     use_oa = cfg and cfg.get("data_source") == "openagenda"
     if use_oa:
         try:
@@ -136,9 +134,11 @@ def generate(out_dir=None, max_events=0, pages=99, cfg=None, size=DEFAULT_SIZE):
                 u = idx.get(_norm_title(e.get("title")))
                 if not u:
                     return e
-                d = site_detail_enrich(u, e.get("title"))
+                d = site_detail_enrich(u, e.get("title"), series_tbl)
                 if d.get("color"):
                     e["color"] = d["color"]
+                if not e.get("series") and d.get("series"):
+                    e["series"] = d["series"]
                 for k in ("speakers", "moderator", "note"):
                     if not e.get(k) and d.get(k):
                         e[k] = d[k]
@@ -148,8 +148,9 @@ def generate(out_dir=None, max_events=0, pages=99, cfg=None, size=DEFAULT_SIZE):
             # séries : OA ne porte pas l'appartenance — chaque page
             # série du site liste ses événements (IDs dans les URLs) ;
             # on matche via la page site retrouvée par titre
-            for slug, label in (series_map or SERIES).items():
-                ids = series_event_ids(slug)
+            id_cache = {}
+            for slug, label in _unique_series_rows(series_tbl):
+                ids = series_event_ids_for(slug, label, id_cache)
                 if not ids:
                     continue
                 for e in events:
@@ -188,10 +189,13 @@ def generate(out_dir=None, max_events=0, pages=99, cfg=None, size=DEFAULT_SIZE):
     else:
         with ThreadPoolExecutor(max_workers=6) as ex:
             events = list(
-                ex.map(lambda e: download_image(parse_detail(e)), events))
+                ex.map(lambda e: download_image(
+                    parse_detail(e, series_tbl)), events))
     _apply_spec_prefs(events, cfg)
 
-    # métadonnées pour la « diapo du jour » de la webui
+    # métadonnées pour la webui (« diapo du jour », étiquettes de la
+    # galerie) — « slide » est le nom de fichier calculé par
+    # slide_names : la webui n'a pas à le recalculer par index
     import json
     out.mkdir(parents=True, exist_ok=True)
     (out / "events.json").write_text(
@@ -199,6 +203,7 @@ def generate(out_dir=None, max_events=0, pages=99, cfg=None, size=DEFAULT_SIZE):
             [
                 {
                     "title": e["title"], "url": e["url"],
+                    "slide": name,
                     "tag": e.get("tag"), "color": e.get("color"),
                     "specs": e["specs"],
                     "desc": e.get("desc", ""),
@@ -211,7 +216,7 @@ def generate(out_dir=None, max_events=0, pages=99, cfg=None, size=DEFAULT_SIZE):
                     "access_venue": e.get("access_venue", []),
                     "series": e.get("series", ""),
                 }
-                for e in events
+                for e, name in zip(events, slide_names(events))
             ],
             ensure_ascii=False, indent=1,
         ),

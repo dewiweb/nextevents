@@ -77,6 +77,59 @@ def openagenda_image(uid):
     return None
 
 
+def round_logo(src, dst=None, size=512):
+    """Recadre un logo uploadé en vignette ronde façon badge de série :
+    disque à la couleur dominante de l'image, logo contenu dans le
+    carré inscrit (image opaque) ou à ~78 % (logo avec transparence,
+    dont le fond laisse voir le disque).
+
+    Un logo quasi monochrome sur fond transparent recevrait un disque
+    de sa propre couleur — illisible : on inverse alors vers un fond
+    contrasté blanc/anthracite. Écrit un PNG ; retourne son chemin."""
+    from collections import Counter
+    from PIL import Image, ImageDraw
+
+    src = Path(src)
+    dst = Path(dst) if dst else src.with_suffix(".png")
+    img = Image.open(src).convert("RGBA")
+
+    # couleur dominante des pixels opaques (quantifiée par pas de 32)
+    sample = img.resize((64, 64))
+    px = [p[:3] for p in sample.getdata() if p[3] > 32]
+    opaque = len(px) / (64 * 64)
+    if px:
+        buckets = Counter(tuple(c // 32 * 32 + 16 for c in p)
+                          for p in px)
+        bucket, freq = buckets.most_common(1)[0]
+        # moyenne réelle des pixels du bucket dominant — le fond doit
+        # fusionner avec le fond propre du logo (blanc pur vs ~240)
+        same = [p for p in px
+                if all((c // 32 * 32 + 16) == b for c, b in zip(p, bucket))]
+        dom = tuple(round(sum(p[i] for p in same) / len(same))
+                    for i in range(3))
+        if opaque < 0.6 and freq > 0.6 * len(px):
+            # logo monochrome sur fond transparent : fond contrasté
+            lum = (.2126 * dom[0] + .7152 * dom[1] + .0722 * dom[2]) / 255
+            dom = (255, 255, 255) if lum < .55 else (38, 37, 36)
+    else:
+        dom = (255, 255, 255)
+
+    badge = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    ImageDraw.Draw(badge).ellipse((0, 0, size - 1, size - 1),
+                                  fill=dom + (255,))
+    logo = img.copy()
+    box = int(size * (0.70 if opaque > 0.85 else 0.78))
+    logo.thumbnail((box, box), Image.LANCZOS)
+    badge.alpha_composite(logo, ((size - logo.width) // 2,
+                                 (size - logo.height) // 2))
+    # sécurité : rien ne dépasse du disque
+    mask = Image.new("L", (size, size), 0)
+    ImageDraw.Draw(mask).ellipse((0, 0, size - 1, size - 1), fill=255)
+    badge = Image.composite(badge, Image.new("RGBA", (size, size)), mask)
+    badge.save(dst)
+    return dst
+
+
 def download_image(ev):
     """Télécharge l'image et la retourne en data URI (HTML autonome).
     Cache local : les URLs d'images sont versionnées, on ne retélécharge

@@ -154,20 +154,19 @@ def site_card_index(categories=None):
     return index
 
 
-def banner_color(url):
-    """Couleur éditoriale de la page détail (modifieur v-banner--X)."""
-    return site_detail_enrich(url).get("color")
-
-
-def site_detail_enrich(url, title=None):
+def site_detail_enrich(url, title=None, series_tbl=None):
     """Compléments de la page détail du site absents d'OpenAgenda :
     couleur de bannière, intervenants (<strong> de l'introduction
-    longue), animateur, note. Un seul fetch, toutes les infos."""
+    longue), animateur, note, série éventuelle. Un seul fetch, toutes
+    les infos."""
     try:
         soup = BeautifulSoup(get(url).text, "lxml")
     except Exception:
         return {}
     out = {}
+    series = series_from_soup(soup, series_tbl or SERIES)
+    if series:
+        out["series"] = series
     banner = soup.select_one(".v-banner")
     color = _color_from_classes(
         banner.get("class") if banner else [], "v-banner")
@@ -287,9 +286,10 @@ def list_events(max_pages=99, categories=None):
     return events
 
 
-def parse_detail(ev):
+def parse_detail(ev, series_tbl=None):
     """Complète un événement avec sa page détail : description, image HD,
-    crédit, durée, couleur de bannière."""
+    crédit, durée, couleur de bannière, série éventuelle.
+    `series_tbl` = table de détection (series_map ou SERIES)."""
     try:
         soup = BeautifulSoup(get(ev["url"]).text, "lxml")
     except Exception as e:
@@ -354,15 +354,13 @@ def parse_detail(ev):
             if label and label not in ev["specs"]:
                 ev["specs"][label] = " ".join(text.get_text().split())
 
-    # appartenance à une série : bloc richtext « En savoir plus » vers
-    # /au-programme/<slug> ou <h2> au nom de la série (présent sur une
-    # partie seulement des pages — mark_series complète via la page série)
-    for slug, label in SERIES.items():
-        if soup.find("a", href=re.compile(rf"/{slug}\b")) or soup.find(
-                lambda t: t.name == "h2"
-                and label.lower() in t.get_text().lower()):
-            ev["series"] = label
-            break
+    # appartenance à une série : lien « En savoir plus » ou <h2> au nom
+    # d'une série suivie (series_map ou SERIES) — présent sur une
+    # partie seulement des pages, mark_series complète via la page
+    # série pour les autres
+    series = series_from_soup(soup, series_tbl or SERIES)
+    if series:
+        ev["series"] = series
 
     # bloc « Destiné à … / Accessibilité » : le site reflète les champs
     # OpenAgenda (publics / accessibility) — extraction directe, sans
@@ -435,10 +433,26 @@ def parse_series_map(text):
     return {k: l for k, l, _ in parse_series(text)}
 
 
-def series_logo(text, label):
-    """Chemin du logo associé au libellé de série, ou None."""
-    return next((g for _, l, g in parse_series(text)
-                 if l == label and g), None)
+def series_tables(text):
+    """Tables de résolution d'une série par ordre de priorité —
+    chacune une liste de (identifiant, libellé, logo) :
+
+    1. réglage series_map (« slug = Libellé | logo ») — l'utilisateur
+       peut y surcharger un libellé par défaut ou ajouter les siennes
+    2. SERIES : slugs de pages série du site
+    3. SERIES_KEYWORDS : keywords OA (identifiants ≠ slugs de page)
+
+    La résolution d'une série *détectée* (libellé canonique, logo, URL
+    de la page série) est additive sur les trois tables — events.json
+    peut porter une série issue d'une config passée. La *détection*,
+    elle, reste en « series_map ou table par défaut » (mark_series,
+    oa._base_map) : configurer le champ remplace les séries suivies."""
+    from .oa import SERIES_KEYWORDS
+    return [
+        parse_series(text),
+        [(k, l, None) for k, l in SERIES.items()],
+        [(k, l, None) for k, l in SERIES_KEYWORDS.items()],
+    ]
 
 
 def _norm_series(s):
@@ -460,16 +474,69 @@ def series_brand(text, series):
     s = _norm_series(series)
     if not s:
         return "", None
-    from .oa import SERIES_KEYWORDS
-    tables = [parse_series(text),
-              [(k, l, None) for k, l in SERIES.items()],
-              [(k, l, None) for k, l in SERIES_KEYWORDS.items()]]
-    for rows in tables:
+    for rows in series_tables(text):
         for k, l, g in rows:
             nk, nl = _norm_series(k), _norm_series(l)
             if s == nl or s == nk or s in nk or nk in s:
                 return l, g
     return None, None
+
+
+def _series_key_for(ident, table):
+    """Clé de la table correspondant à un identifiant — mêmes règles
+    normalisées que _series_label_for, sur les clés uniquement."""
+    h = _norm_series(ident)
+    if not h:
+        return None
+    for k in table:
+        if _norm_series(k) == h:
+            return k
+    for k in table:
+        nk = _norm_series(k)
+        if len(nk) >= 4 and len(h) >= 4 and (nk in h or h in nk):
+            return k
+    return None
+
+
+def _series_label_for(ident, table):
+    """Libellé de la table correspondant à un identifiant de série —
+    le même nom sous des formes différentes se rejoint après
+    normalisation (slug de page « fete-de-la-science » ≡ keyword OA
+    « fetedelascience » ≡ libellé « Fête de la science »). Égalité
+    d'abord, puis sous-chaîne ≥4 (« nosfuturs » ⊂ « nosfuturs2027 »)."""
+    h = _norm_series(ident)
+    if not h:
+        return None
+    cand = list(table.items()) + [(l, l) for l in table.values()]
+    for k, l in cand:
+        if _norm_series(k) == h:
+            return l
+    for k, l in cand:
+        nk = _norm_series(k)
+        if len(nk) >= 4 and len(h) >= 4 and (nk in h or h in nk):
+            return l
+    return None
+
+
+def series_from_soup(soup, table):
+    """Libellé de série détecté sur une page détail : lien « En savoir
+    plus » vers /au-programme/<slug> (hors catégories et événements),
+    sinon <h2> portant le nom d'une série suivie. Recherche limitée au
+    contenu principal pour ne pas capter un lien de navigation."""
+    scope = soup.select_one("main") or soup
+    for a in scope.select('a[href*="/au-programme/"]'):
+        h = a.get("href") or ""
+        if "/categorie/" in h or re.search(r"/\d+", h):
+            continue
+        lbl = _series_label_for(
+            h.rstrip("/").rsplit("/", 1)[-1], table)
+        if lbl:
+            return lbl
+    for h2 in scope.select("h2"):
+        lbl = _series_label_for(" ".join(h2.get_text().split()), table)
+        if lbl:
+            return lbl
+    return None
 
 
 def series_event_ids(slug):
@@ -484,12 +551,68 @@ def series_event_ids(slug):
         return set()
 
 
+def _slugify(s):
+    """« Fête de la science » → « fete-de-la-science » — variante de
+    slug plausible pour sonder la page série du site."""
+    import unicodedata
+    s = unicodedata.normalize("NFD", s or "")
+    s = "".join(c for c in s if not unicodedata.combining(c)).lower()
+    return re.sub(r"-+", "-", re.sub(r"[^a-z0-9]+", "-", s)).strip("-")
+
+
+def series_event_ids_for(slug, label, cache=None):
+    """IDs des événements d'une série — sondes successives de pages
+    /au-programme/<slug> plausibles :
+
+    1. la clé telle quelle (« les-grands-temoins »)
+    2. la clé slugifiée (« Chouettes_Conf » → « chouettes-conf »)
+    3. le slug dérivé du libellé (« fetedelascience » + « Fête de la
+       science » → « fete-de-la-science »)
+    4. les clés et slug de libellé des tables par défaut résolues par
+       l'identifiant (« grandstemoins » → « les-grands-temoins »)"""
+    from .oa import SERIES_KEYWORDS
+    cands = [slug, _slugify(slug), _slugify(label)]
+    for tbl in (SERIES, SERIES_KEYWORDS):
+        for ident in (slug, label):
+            k = _series_key_for(ident, tbl)
+            if k:
+                cands += [k, _slugify(tbl[k])]
+    seen = set()
+    for c in cands:
+        if c and c not in seen:
+            seen.add(c)
+            if cache is not None and c in cache:
+                ids = cache[c]
+            else:
+                ids = series_event_ids(c)
+                if cache is not None:
+                    cache[c] = ids
+            if ids:
+                return ids
+    return set()
+
+
+def _unique_series_rows(table):
+    """Déduplique les lignes d'une table pointant la même série (même
+    clé ou même libellé normalisé) — évite de sonder deux fois la même
+    page série quand series_map contient des alias."""
+    seen, out = set(), []
+    for slug, label in table.items():
+        sig = (_norm_series(slug), _norm_series(label))
+        if sig[0] in seen or sig[1] in seen:
+            continue
+        seen.update(sig)
+        out.append((slug, label))
+    return out
+
+
 def mark_series(events, series_map=None):
     """Marque ev['series'] d'après les pages séries du site — source
     exhaustive (toutes les pages détail ne portent pas le bloc série).
     `series_map` surcharge les séries à suivre (réglage series_map)."""
-    for slug, label in (series_map or SERIES).items():
-        ids = series_event_ids(slug)
+    cache = {}   # une page série n'est sondée qu'une fois par passe
+    for slug, label in _unique_series_rows(series_map or SERIES):
+        ids = series_event_ids_for(slug, label, cache)
         for ev in events:
             m = re.search(r"/(\d+)/?$", ev.get("url") or "")
             if m and m.group(1) in ids:

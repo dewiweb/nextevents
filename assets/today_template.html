@@ -78,8 +78,9 @@ h1{font-size:80px;font-weight:500;line-height:1.08;letter-spacing:-.01em;
 /* le rond de série (250px) est plus haut que la pastille .tag (~65px) :
    marge négative pour que le titre reste à la même hauteur que sur les
    autres diapos — le cercle déborde visuellement dans la zone vide */
-.gt-name{font-size:36px;font-weight:500;line-height:1.14;
- text-transform:uppercase;letter-spacing:.02em;padding:0 26px}
+.gt-name{font-size:${gt_size}px;font-weight:500;line-height:1.14;
+ text-transform:uppercase;letter-spacing:.02em;padding:0 22px;
+ overflow-wrap:break-word}
 .gt-logo{color:rgba(255,255,255,.85);display:flex}
 .gt-logo svg{height:32px;width:auto}
 /* logo de série configuré (« slug = Libellé | logo.png ») : remplace

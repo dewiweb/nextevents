@@ -81,10 +81,106 @@ function syncCats(){
 document.getElementById('gen_categories_extra')
   .addEventListener('input', syncCats);
 
+// Détection des séries éditoriales (pages série du site + keywords
+// OpenAgenda) — les clés déjà présentes dans series_map ne sont pas
+// reproposées
+async function detectSeries(){
+  const box = document.getElementById('series_detect');
+  const acts = document.getElementById('series_detect_acts');
+  const msg = document.getElementById('series_msg');
+  box.style.display = 'none'; acts.style.display = 'none';
+  msg.textContent = 'détection en cours — ~1 min (pages du site + OpenAgenda)…';
+  let r;
+  try {
+    r = await (await fetch('/api/series/detect', {method:'POST'})).json();
+  } catch(e){ msg.textContent = 'échec : ' + e; return; }
+  if (!r.ok){ msg.textContent = 'échec : ' + (r.error || '?'); return; }
+  const ta = document.getElementById('series_map');
+  const known = new Set(
+    [...ta.value.matchAll(/^\s*([^=#]+?)\s*=/gm)].map(m => m[1]));
+  const fresh = r.series.filter(s => !known.has(s.key));
+  msg.textContent = fresh.length
+    ? r.series.length + ' série(s) détectée(s), ' + fresh.length +
+      ' nouvelle(s) — cocher puis ajouter :'
+    : 'aucune nouvelle série détectée';
+  if (!fresh.length) return;
+  box.innerHTML = '';
+  fresh.forEach(s => {
+    const cb = document.createElement('input');
+    cb.type = 'checkbox'; cb.checked = true;
+    cb.dataset.k = s.key; cb.dataset.l = s.label;
+    const lb = document.createElement('label');
+    lb.className = 'cat'; lb.title = s.key;
+    lb.append(cb, document.createTextNode(' ' + s.label));
+    box.appendChild(lb);
+  });
+  box.style.display = 'grid';
+  acts.style.display = 'flex';
+}
+function addDetected(){
+  const ta = document.getElementById('series_map');
+  const lines = [...document.querySelectorAll(
+    '#series_detect input:checked')]
+    .map(cb => cb.dataset.k + ' = ' + cb.dataset.l);
+  if (lines.length){
+    ta.value = (ta.value.replace(/\s+$/, '') + '\n' +
+                lines.join('\n') + '\n').replace(/^\n/, '');
+    dirty.add('series_map'); updSavebar();
+    refreshLogoTargets();
+  }
+  closeDetect();
+}
+function closeDetect(){
+  document.getElementById('series_detect').style.display = 'none';
+  document.getElementById('series_detect_acts').style.display = 'none';
+  document.getElementById('series_msg').textContent = '';
+}
+
+// Lignes « clé = Libellé | logo » du champ series_map → {i, key,
+// label, logo} — sert à peupler le select de cible du logo
+function seriesRows(){
+  return document.getElementById('series_map').value.split('\n')
+    .map((l, i) => {
+      const t = l.trim();
+      if (!t || t.startsWith('#') || !t.includes('=')) return null;
+      const [k, rest] = [l.slice(0, l.indexOf('=')),
+                         l.slice(l.indexOf('=') + 1)];
+      const [label, logo] = [rest.split('|')[0].trim(),
+                             (rest.split('|')[1] || '').trim()];
+      return {i, key: k.trim(), label, logo};
+    }).filter(Boolean);
+}
+function refreshLogoTargets(){
+  const sel = document.getElementById('logo_target');
+  const cur = sel.value;
+  sel.innerHTML = '';
+  const rows = seriesRows();
+  if (!rows.length){
+    const o = document.createElement('option');
+    o.value = ''; o.textContent = '(déclarer une série ci-dessus)';
+    sel.appendChild(o); return;
+  }
+  rows.forEach(rw => {
+    const o = document.createElement('option');
+    o.value = rw.key;
+    o.textContent = rw.label + ' (' + rw.key + ')' +
+                    (rw.logo ? '  ◉' : '');
+    sel.appendChild(o);
+  });
+  if (cur && rows.some(rw => rw.key === cur)) sel.value = cur;
+}
+document.getElementById('series_map')
+  .addEventListener('input', refreshLogoTargets);
+
 async function uploadLogo(inp){
   const f = inp.files[0]; inp.value = '';
   const msg = document.getElementById('logo_up_msg');
   if (!f) return;
+  const key = document.getElementById('logo_target').value;
+  if (!key){
+    msg.textContent = 'ajouter d\'abord la ligne de la série ci-dessus';
+    return;
+  }
   msg.textContent = 'envoi…';
   const fd = new FormData(); fd.append('file', f);
   let r;
@@ -93,21 +189,21 @@ async function uploadLogo(inp){
       {method:'POST', body:fd})).json();
   } catch(e){ msg.textContent = 'échec : ' + e; return; }
   if (!r.ok){ msg.textContent = 'échec : ' + (r.error || '?'); return; }
-  // associe le logo à la dernière ligne de série sans « | »
+  // associe le logo à la ligne de la série choisie dans le select
   const ta = document.getElementById('series_map');
   const lines = ta.value.split('\n');
-  let done = false;
-  for (let i = lines.length - 1; i >= 0; i--){
-    if (lines[i].trim() && !lines[i].includes('|')){
-      lines[i] = lines[i].replace(/\s+$/, '') + ' | ' + r.name;
-      done = true; break;
-    }
+  const row = seriesRows().find(rw => rw.key === key);
+  if (row){
+    lines[row.i] = row.key + ' = ' + row.label + ' | ' + r.name;
+    ta.value = lines.join('\n');
+    dirty.add('series_map'); updSavebar();
+    refreshLogoTargets();
+    document.getElementById('logo_target').value = key;
+    msg.textContent = r.name + ' associé à « ' + row.label + ' »';
+  } else {
+    msg.textContent = 'enregistré — ligne « ' + key +
+      ' » introuvable, ajouter « | ' + r.name + ' » à la main';
   }
-  ta.value = lines.join('\n');
-  dirty.add('series_map'); updSavebar();
-  msg.textContent = done
-    ? r.name + ' associé à la dernière série — vérifier la ligne'
-    : 'enregistré — ajouter « | ' + r.name + ' » à la ligne de la série';
 }
 
 function setVal(id, v){
@@ -133,6 +229,7 @@ async function refresh(){
   setCats(s.settings.gen_categories, s.categories || []);
   setVal('next_label', s.settings.next_label);
   setVal('series_map', s.settings.series_map);
+  refreshLogoTargets();
   setVal('specs_show', s.settings.specs_show);
   setVal('spec_drops', s.settings.spec_drops);
   setVal('spec_over', s.settings.spec_overrides);
@@ -199,7 +296,20 @@ async function refresh(){
     sp.length ? '' : 'none';
   document.getElementById('grid_p').innerHTML =
     sp.map(n => cell(n, 'portrait/')).join('');
-  if (!document.getElementById('t_ev').options.length) loadTodayEvents();
+  // tant qu'aucun événement n'a été chargé on réessaie à chaque
+  // refresh — sinon la liste restait vide après la 1re génération
+  // (le <option> placeholder faisait passer options.length à 1)
+  if (!todayEvents.length) loadTodayEvents();
+  // séries connues (series_map + tables par défaut) pour le choix
+  // manuel quand l'événement n'est pas dans la liste
+  const ssel = document.getElementById('t_series_sel');
+  if (ssel && ssel.options.length <= 1 && s.series_options){
+    (s.series_options).forEach(l => {
+      const o = document.createElement('option');
+      o.value = l; o.textContent = l;
+      ssel.appendChild(o);
+    });
+  }
   // l'aperçu reste si un live-preview srcdoc est affiché, même quand
   // index.html n'existe pas encore sur le disque
   fetch('/today/index.html', {method:'HEAD'})
@@ -246,6 +356,10 @@ const BG_CHOICES = [
   ['#2b2e2c','Vert nuit'],['#312a28','Terre nuit'],['#313134','Bleu nuit'],
   ['#3d1813','Rouge nuit'],['#16203f','Marine (séries)']];
 let todayBg = BG_CHOICES[0][0];
+// le fond marine posé automatiquement quand une série est choisie est
+// défait si l'événement/série suivant n'en a pas — un choix manuel
+// de l'utilisateur n'est jamais écrasé
+let bgAuto = false;
 function buildBgPalette(){
   const box = document.getElementById('t_bg');
   box.innerHTML = '';
@@ -256,20 +370,79 @@ function buildBgPalette(){
       'cursor:pointer;padding:0;background:'+v+';border:3px solid ' +
       (v===todayBg ? '#f6e3bb' : 'rgba(239,234,230,.15)') +
       ';box-shadow:' + (v===todayBg ? '0 0 0 2px #f6e3bb' : 'none');
-    b.onclick = () => { todayBg = v; buildBgPalette(); liveTodayPreview(); };
+    b.onclick = () => { todayBg = v; bgAuto = false;
+      buildBgPalette(); liveTodayPreview(); };
     box.appendChild(b);
   });
 }
 buildBgPalette();
+// série effective : celle de l'événement choisi, sinon la série choisie
+// manuellement (événement hors liste — généré entre deux runs)
+function effectiveSeries(){
+  const ev = todayEvents.find(e => e.i == t_ev.value) || {};
+  return ev.series || document.getElementById('t_series_sel').value;
+}
+function refreshSeriesBadge(){
+  const s = effectiveSeries();
+  document.getElementById('t_series').textContent =
+    s ? 'Série : '+s+' — modèle com appliqué' : '';
+}
 let todayEvents = [];
+// « JJ/MM/AA » du jour (format du spec Date du site)
+function todayShort(){
+  const t = new Date();
+  return String(t.getDate()).padStart(2,'0') + '/' +
+    String(t.getMonth()+1).padStart(2,'0') + '/' +
+    String(t.getFullYear()).slice(2);
+}
+function evIsToday(d){
+  d = d || '';
+  const m = d.match(/(\d{2})\/(\d{2})\/(\d{2})\s*au\s*(\d{2})\/(\d{2})\/(\d{2})/);
+  if (m){  // « Du JJ/MM/AA au JJ/MM/AA » : en cours si aujourd'hui dedans
+    const a = `20${m[3]}-${m[2]}-${m[1]}`, b = `20${m[6]}-${m[5]}-${m[4]}`;
+    const t = new Date();
+    const iso = t.getFullYear() + '-' +
+      String(t.getMonth()+1).padStart(2,'0') + '-' +
+      String(t.getDate()).padStart(2,'0');
+    return a <= iso && iso <= b;
+  }
+  return d.includes(todayShort());
+}
 async function loadTodayEvents(){
-  todayEvents = await (await fetch('/api/today/events')).json();
+  try {
+    todayEvents = await (await fetch('/api/today/events')).json();
+  } catch(e){ return; }
   const sel = document.getElementById('t_ev');
-  const cur = sel.value;
-  sel.innerHTML = '<option value="">— choisir un événement —</option>' +
-    todayEvents.map(e => `<option value="${e.i}">${e.date} · ${e.tag} ·
-      ${e.title}</option>`).join('');
-  if (cur !== '') sel.value = cur;
+  // restauration par identité (date|titre), pas par index : une
+  // régénération peut réordonner la liste
+  const prevKey = sel.selectedIndex >= 0
+    ? (sel.options[sel.selectedIndex].dataset.k || '') : '';
+  sel.innerHTML = '';
+  const ph = document.createElement('option');
+  ph.value = ''; ph.textContent = '— choisir un événement —';
+  sel.appendChild(ph);
+  const groups = [
+    ['Aujourd\u2019hui', todayEvents.filter(e => evIsToday(e.date))],
+    ['À venir', todayEvents.filter(e => !evIsToday(e.date))],
+  ];
+  for (const [label, evs] of groups){
+    if (!evs.length) continue;
+    const g = document.createElement('optgroup');
+    g.label = label;
+    for (const e of evs){
+      const o = document.createElement('option');
+      o.value = e.i;
+      o.dataset.k = (e.date || '') + '|' + (e.title || '');
+      o.textContent = [e.date, e.tag, e.title]
+        .filter(Boolean).join(' · ');
+      g.appendChild(o);
+    }
+    sel.appendChild(g);
+  }
+  if (prevKey){
+    const m = [...sel.options].find(o => o.dataset.k === prevKey);
+    sel.value = m ? m.value : '';
+  }
 }
 function addSpeaker(name, qual){
   const d = document.createElement('div');
@@ -287,9 +460,17 @@ async function prefillToday(){
   const i = document.getElementById('t_ev').value;
   if (i === '') return;
   const e = await (await fetch('/api/today/event/'+i)).json();
-  document.getElementById('t_series').textContent =
-    e.series ? 'Série : '+e.series+' — modèle com appliqué' : '';
-  if (e.series) { todayBg = '#16203f'; buildBgPalette(); }
+  // la série de l'événement l'emporte sur le choix manuel
+  if (e.series) document.getElementById('t_series_sel').value = '';
+  refreshSeriesBadge();
+  if (e.series) { todayBg = '#16203f'; bgAuto = true; buildBgPalette(); }
+  else if (bgAuto) {
+    todayBg = BG_CHOICES[0][0]; bgAuto = false; buildBgPalette();
+  }
+  // nouvel événement = nouvelle session d'édition : l'aperçu repart
+  // des champs, d'éventuelles retouches d'une diapo précédente ne
+  // bloquent plus le live-preview
+  previewDirty = false;
   document.getElementById('t_title').value = e.title || '';
   document.getElementById('t_sub').value = '';
   document.getElementById('t_mod').value = e.moderator || '';
@@ -316,15 +497,38 @@ function collectToday(){
     moderator:t_mod.value, speakers, note:t_note.value,
     access:t_access.value,
     tag:ev.tag||'', color:ev.color||null, bg:todayBg,
-    series:ev.series||''};
+    series:ev.series||document.getElementById('t_series_sel').value};
 }
 // live-preview : HTML généré côté serveur injecté dans l'iframe (srcdoc)
 // — rien n'est écrit, rendu ou poussé avant « Générer »
+// previewDirty : l'utilisateur a retouché l'aperçu (contentEditable /
+// barre de formatage) sans enregistrer — le live-preview ne doit pas
+// écraser ces retouches, il suspend juste sa mise à jour
+// srcDirty : le textarea « Source HTML » diffère du fichier sur disque
+let previewDirty = false, srcDirty = false;
+function armPreviewEdit(){
+  const d = t_frame().contentDocument;
+  if (d && d.body){
+    d.body.contentEditable = 'true';
+    d.body.addEventListener('input', () => {
+      previewDirty = true;
+      document.getElementById('t_gen').textContent =
+        'aperçu : retouches en cours — « Enregistrer les retouches » ' +
+        'pour publier';
+    });
+  }
+}
 let _prevTimer = null;
 function liveTodayPreview(){
   clearTimeout(_prevTimer);
   _prevTimer = setTimeout(async () => {
     if (todaySrcMode) return;
+    if (previewDirty){
+      document.getElementById('t_gen').textContent =
+        'aperçu : retouches en cours — « Enregistrer les retouches » ' +
+        'pour publier';
+      return;
+    }
     const d = collectToday();
     if (!d.title.trim()) return;
     const r = await (await fetch('/api/today/preview',{method:'POST',
@@ -341,12 +545,14 @@ function liveTodayPreview(){
     }
     p.style.opacity = '0';      // fondu plutôt que flash noir au rechargement
     f.onload = () => {
-      const dd = f.contentDocument;
-      if (dd && dd.body) dd.body.contentEditable = 'true';
+      armPreviewEdit();
       p.style.opacity = '1';
     };
     f.removeAttribute('src');
     f.srcdoc = r.html;
+    // la srcdoc affichée n'est pas le fichier poussé : le statut le dit
+    document.getElementById('t_gen').textContent =
+      'aperçu — non envoyée';
   }, 700);
 }
 // « change » seulement : la preview se rafraîchit quand on quitte le
@@ -356,15 +562,39 @@ function liveTodayPreview(){
     .addEventListener('change', liveTodayPreview));
 document.getElementById('t_speakers')
   .addEventListener('change', liveTodayPreview);
+// série choisie à la main (événement hors liste) : badge, fond marine
+// et live-preview — n'a d'effet que si l'événement choisi n'a pas
+// déjà une série (l'événement l'emporte)
+document.getElementById('t_series_sel')
+  .addEventListener('change', () => {
+    const ev = todayEvents.find(e => e.i == t_ev.value) || {};
+    if (!ev.series){
+      const v = document.getElementById('t_series_sel').value;
+      if (v){ todayBg = '#16203f'; bgAuto = true; }
+      else if (bgAuto){ todayBg = BG_CHOICES[0][0]; bgAuto = false; }
+      buildBgPalette();
+    }
+    refreshSeriesBadge();
+    liveTodayPreview();
+  });
 async function genToday(){
+  const btn = document.getElementById('t_genbtn');
   const el = document.getElementById('t_gen');
+  btn.disabled = true;
   el.textContent = 'génération…';
-  const r = await (await fetch('/api/today',{method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body: JSON.stringify(collectToday())})).json();
-  el.textContent = r.ok ? 'générée ✓ envoyée sur le partage'
-    : 'générée — envoi : '+(r.errors||[]).join(' ; ');
+  let r;
+  try {
+    r = await (await fetch('/api/today',{method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(collectToday())})).json();
+  } finally {
+    btn.disabled = false;
+  }
+  el.textContent = r.ok ? 'générée ✓ envoyée sur les partages'
+    : 'échec : '+(r.errors||[r.error||'erreur']).join(' ; ');
   if (r.ok){
+    // le fichier disque est la nouvelle référence
+    previewDirty = false; srcDirty = false;
     document.getElementById('t_prev').dataset.loaded = '1';
     showTodayTools(true);
     if (todaySrcMode) toggleTodaySrc();
@@ -382,7 +612,11 @@ function t_frame(){ return document.getElementById('t_frame'); }
 function fmt(cmd, val){
   const w = t_frame().contentWindow;
   w.focus();
+  previewDirty = true;
   w.document.execCommand(cmd, false, val || null);
+  document.getElementById('t_gen').textContent =
+    'aperçu : retouches en cours — « Enregistrer les retouches » ' +
+    'pour publier';
 }
 // taille relative : ±15 % de la taille calculée au point de sélection,
 // appliquée via un <span style="font-size"> qui enveloppe la sélection
@@ -390,6 +624,7 @@ function fontSizeStep(dir){
   const w = t_frame().contentWindow, d = w.document;
   const sel = w.getSelection();
   if (!sel || !sel.rangeCount || sel.isCollapsed) return;
+  previewDirty = true;
   const range = sel.getRangeAt(0);
   const node = range.startContainer.nodeType === 3
     ? range.startContainer.parentElement : range.startContainer;
@@ -420,7 +655,8 @@ document.getElementById('t_block').addEventListener('change', e => {
   e.target.value = '';
 });
 function showTodayTools(on){
-  ['t_savebtn','t_srcbtn','t_full','t_fmt','t_hint'].forEach(id =>
+  ['t_savebtn','t_srcbtn','t_full','t_fmt','t_hint','t_delbtn']
+    .forEach(id =>
     document.getElementById(id).style.display =
       on && !(id === 't_fmt' && todaySrcMode) ? '' : 'none');
   const p = document.getElementById('t_prev');
@@ -438,6 +674,10 @@ function showTodayTools(on){
 // qr.html (slide série). Le sélecteur bascule l'aperçu/éditeur.
 let todayFile = 'index';
 function setTodayFile(f){
+  if (f !== todayFile && (previewDirty || srcDirty) &&
+      !confirm('Des retouches ne sont pas enregistrées — ' +
+               'changer de diapo les abandonne. Continuer ?')) return;
+  previewDirty = false; srcDirty = false;
   todayFile = f;
   document.getElementById('tf_index').classList.toggle('on', f==='index');
   document.getElementById('tf_qr').classList.toggle('on', f==='qr');
@@ -460,17 +700,19 @@ function fitTodayPreview(){
 window.addEventListener('resize', fitTodayPreview);
 function loadTodayPreview(){
   const f = t_frame();
+  previewDirty = false;
   delete f.dataset.lastHtml;    // la source redevient le fichier disque
   // cache-bust : index.html vient d'être réécrit
-  f.onload = () => {
-    const d = f.contentDocument;
-    if (d && d.body) d.body.contentEditable = 'true';
-  };
+  f.onload = armPreviewEdit;
   f.removeAttribute('srcdoc');   // srcdoc primerait sur src sinon
   f.src = '/today/' + todayFile + '.html?t=' + Date.now();
   // recharge aussi la source pour rester sync si on bascule
   fetch('/api/today/html?f=' + todayFile).then(r => r.json()).then(j => {
-    if (j.ok) document.getElementById('t_html').value = j.html;
+    if (j.ok){
+      document.getElementById('t_html').value = j.html;
+      srcDirty = false;
+      syncHl();
+    }
   }).catch(() => {});
 }
 // ——— éditeur source embarqué : textarea transparent sur <pre> coloré ———
@@ -495,10 +737,17 @@ function syncHl(){
   hl.scrollTop = ta.scrollTop;
   hl.scrollLeft = ta.scrollLeft;
 }
-document.getElementById('t_html').addEventListener('input', syncHl);
+document.getElementById('t_html').addEventListener('input', () => {
+  srcDirty = true; syncHl();
+});
 document.getElementById('t_html').addEventListener('scroll', syncHl);
 let todaySrcMode = false;
 function toggleTodaySrc(){
+  // entrer en mode source remplace le textarea par un snapshot de
+  // l'aperçu — des modifs non enregistrées seraient perdues
+  if (!todaySrcMode && srcDirty &&
+      !confirm('La source a été modifiée sans être enregistrée — ' +
+               'la remplacer par le contenu de l\'aperçu ?')) return;
   todaySrcMode = !todaySrcMode;
   document.getElementById('t_prev').style.display =
     todaySrcMode ? 'none' : '';
@@ -516,7 +765,13 @@ function toggleTodaySrc(){
       document.getElementById('t_html').value =
         '<!DOCTYPE html>\n' + d.documentElement.outerHTML;
     }
+    srcDirty = false;
     syncHl();
+  } else if (srcDirty){
+    // quitter le mode source avec des modifs non enregistrées :
+    // l'aperçu reste celui du fichier — on le signale
+    document.getElementById('t_edit').textContent =
+      'source modifiée — non enregistrée';
   }
 }
 async function saveTodayHtml(){
@@ -539,7 +794,29 @@ async function saveTodayHtml(){
     body: JSON.stringify({html:h})})).json();
   el.textContent = r.ok ? 'enregistré ✓ PNG re-rendu, envoyé'
     : 'enregistrement : '+(r.errors||[r.error||'erreur']).join(' ; ');
-  if (!todaySrcMode) loadTodayPreview();
+  if (r.ok){
+    // le fichier disque est la nouvelle référence — l'aperçu se
+    // recharge même en mode source (sinon il afficherait la version
+    // d'avant enregistrement en revenant à l'aperçu)
+    previewDirty = false; srcDirty = false;
+    loadTodayPreview();
+  }
+}
+async function delToday(){
+  if (!confirm('Retirer la diapo du jour ?\n(fichiers today/ supprimés ' +
+               'en local puis sur les partages à la synchro)')) return;
+  const r = await (await fetch('/api/today', {method:'DELETE'})).json();
+  const el = document.getElementById('t_gen');
+  el.textContent = r.ok ? 'retirée ✓' : 'retrait : ' + (r.error || '?');
+  if (!r.ok) return;
+  previewDirty = false; srcDirty = false;
+  const f = t_frame();
+  f.removeAttribute('src'); f.removeAttribute('srcdoc');
+  todayFile = 'index';
+  document.getElementById('tf_index').classList.add('on');
+  document.getElementById('tf_qr').classList.remove('on');
+  showTodayTools(false);
+  refreshQrTab();
 }
 async function save(){
   await fetch('/api/settings',{method:'POST',

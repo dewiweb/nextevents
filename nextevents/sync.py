@@ -11,19 +11,27 @@ from pathlib import Path
 
 
 def _dirs(out_dir, cfg, proto):
-    """Dossiers locaux à pousser : (sous-chemin distant, chemin local)."""
+    """Dossiers locaux à pousser : (sous-chemin distant, chemin local).
+    today/ (diapo du jour) est toujours poussé quand il existe — les
+    réglages *_send_* ne concernent que le diaporama d'événements."""
     out_dir = Path(out_dir)
     dirs = []
     if cfg.get(f"{proto}_send_landscape", 1):
         dirs.append(("", out_dir))
     if cfg.get(f"{proto}_send_portrait") and (out_dir / "portrait").exists():
         dirs.append(("portrait", out_dir / "portrait"))
+    # today/ existe même vide après un retrait : le pousser vide est ce
+    # qui supprime la diapo du jour à distance
+    if (out_dir / "today").is_dir():
+        dirs.append(("today", out_dir / "today"))
     return dirs
 
 
 def _ftp_push_dir(ftp, src, sub):
-    """Pousse un dossier local (*.png + html/*.html + manifest.txt) vers
-    le dossier courant du FTP, ou son sous-dossier `sub` s'il est donné."""
+    """Pousse un dossier local (*.png + *.html racine + html/*.html +
+    manifest.txt) vers le dossier courant du FTP, ou son sous-dossier
+    `sub` s'il est donné. Les .html à la racine servent à today/ (la
+    racine du diaporama n'en a pas — glob vide, no-op)."""
     depth = 0
     if sub:
         try:
@@ -33,7 +41,8 @@ def _ftp_push_dir(ftp, src, sub):
         ftp.cwd(sub)
         depth = 1
     try:
-        for pattern, hsub in (("*.png", None), ("*.html", "html")):
+        for pattern, hsub in (("*.png", None), ("*.html", None),
+                              ("*.html", "html")):
             sdir = src if hsub is None else src / hsub
             local = {p.name: p for p in sdir.glob(pattern)}
             if hsub:
@@ -115,11 +124,12 @@ def sync_ftp(out_dir, cfg):
 
 
 def _smb_push_dir(src, d):
-    """Pousse un dossier local (*.png + html/*.html + manifest.txt) vers
-    le chemin SMB `d`."""
+    """Pousse un dossier local (*.png + *.html racine + html/*.html +
+    manifest.txt) vers le chemin SMB `d`."""
     from smbclient import listdir, makedirs, open_file, remove, stat
 
-    for pattern, hsub in (("*.png", None), ("*.html", "html")):
+    for pattern, hsub in (("*.png", None), ("*.html", None),
+                          ("*.html", "html")):
         sdir = src if hsub is None else src / hsub
         local = {p.name: p for p in sdir.glob(pattern)}
         if hsub and not local:
@@ -186,10 +196,12 @@ def sync_smb(out_dir, cfg):
 
 
 def _local_push_dir(src, d):
-    """Miroir d'un dossier local (*.png + html/*.html + manifest.txt)
-    vers le chemin `d` (disque, lecteur mappé ou UNC \\\\hôte\\partage)."""
+    """Miroir d'un dossier local (*.png + *.html racine + html/*.html +
+    manifest.txt) vers le chemin `d` (disque, lecteur mappé ou UNC
+    \\\\hôte\\partage)."""
     d.mkdir(parents=True, exist_ok=True)
-    for pattern, hsub in (("*.png", None), ("*.html", "html")):
+    for pattern, hsub in (("*.png", None), ("*.html", None),
+                          ("*.html", "html")):
         sdir = src if hsub is None else src / hsub
         local = {p.name: p for p in sdir.glob(pattern)}
         if hsub and not local:
@@ -229,6 +241,22 @@ def sync_local(out_dir, cfg):
     dirs = [("", out_dir)]
     if (out_dir / "portrait").exists():
         dirs.append(("portrait", out_dir / "portrait"))
+    if (out_dir / "today").is_dir():
+        dirs.append(("today", out_dir / "today"))
     for sub, src in dirs:
         d = Path(dest) / sub if sub else Path(dest)
         _local_push_dir(src, d)
+
+
+def push_all(out_dir, cfg):
+    """Pousse le dossier de sortie vers toutes les destinations
+    configurées (FTP, SMB, dossier local — today/ inclus). Renvoie la
+    liste d'erreurs, vide = tout OK."""
+    errors = []
+    for label, fn in (("FTP", sync_ftp), ("SMB", sync_smb),
+                      ("local", sync_local)):
+        try:
+            fn(out_dir, cfg)
+        except Exception as e:
+            errors.append(f"{label} : {e}")
+    return errors
