@@ -52,20 +52,49 @@ details.card[open]>summary{margin-bottom:14px}
 .tabpanel.active{display:block}
 .cell{position:relative}
 .cell .acts{position:absolute;top:6px;right:6px;display:flex;gap:4px;
- opacity:0;transition:opacity .15s}
+ opacity:.4;transition:opacity .15s}
 .cell:hover .acts{opacity:1}
+.fset{border:1px solid #302f2e;border-radius:10px;padding:14px 16px;
+ margin-top:14px}
+.fset>h4{font-size:11.5px;text-transform:uppercase;letter-spacing:.08em;
+ color:#c99483;margin:0 0 12px;font-weight:600}
+.fgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));
+ gap:12px 16px}
+.fgrid label{display:flex;flex-direction:column;gap:6px;font-size:13px}
+.fgrid input,.fgrid select,.fgrid textarea{width:100%}
+.fgrid .wide{grid-column:1/-1}
+.fgrid .chk{flex-direction:row;align-items:center;gap:8px;color:#efeae6;
+ align-self:end;padding-bottom:8px}
+.hbadge{font-size:12.5px;padding:5px 12px;border-radius:20px;
+ border:1px solid #302f2e;color:#8f8c8a;margin-left:auto;
+ align-self:center;white-space:nowrap}
+.hbadge.run{color:#f6e3bb;border-color:#6b5a2e}
+.hbadge.err{color:#c99483;border-color:#6b3a2e}
+#savebar{position:fixed;right:20px;bottom:20px;z-index:60;display:none;
+ align-items:center;gap:12px;background:#262523;border:1px solid #3d3a38;
+ border-radius:12px;padding:10px 10px 10px 16px;box-shadow:0 6px 24px #0009}
+#savebar.on{display:flex}
+#savebar .hint{font-size:13px;color:#f6e3bb}
+#t_prev{background:#000;border:1px solid #302f2e;border-radius:10px;
+ overflow:hidden;height:540px;margin-top:14px;display:none}
+#t_prev iframe{width:1920px;height:1080px;border:0;
+ transform:scale(.5);transform-origin:0 0}
 .cell .acts button{background:rgba(20,20,20,.88);color:#efeae6;
  border:1px solid #302f2e;border-radius:7px;width:28px;height:28px;
  font-size:14px;cursor:pointer;padding:0;line-height:1}
 .cell .acts button:hover{background:#e3c2b7;color:#141414}
 </style></head><body>
+<div style="display:flex;align-items:baseline;gap:16px;flex-wrap:wrap">
 <h1><span class="dot">●</span> Nextevents</h1>
+<span class="hbadge" id="hbadge">…</span>
+</div>
 <p class="sub">Diaporama OBS des événements des Champs Libres — PNG 16:9</p>
 
 <nav class="tabs">
   <button data-tab="gen" class="active">Général</button>
   <button data-tab="today">Diapo du jour</button>
   <button data-tab="gal">Galerie</button>
+  <button data-tab="cfg">Réglages</button>
 </nav>
 
 <div class="tabpanel active" id="tab_gen">
@@ -80,102 +109,123 @@ details.card[open]>summary{margin-bottom:14px}
   </div>
 </details>
 
-<details class="card" id="sec_set" open>
-  <summary>Réglages</summary>
-  <div class="row">
-    <label>Rafraîchissement auto (min, 0 = off)
-      <input id="interval" type="number" min="0" step="1"></label>
-    <label>Heures fixes (HH:MM, virgules)
-      <input id="sched_times" placeholder="06:00, 18:30"></label>
-    <label>Nb max d'événements (0 = tous)
-      <input id="maxev" type="number" min="0" step="1"></label>
-    <label>Résolution
-      <select id="res" style="width:auto">
-        <option value="uhd">UHD 3840×2160</option>
-        <option value="hd">HD 1920×1080</option>
-      </select></label>
-    <label>Layouts générés</label>
-    <label style="color:#efeae6"><input id="gen_ls" type="checkbox"
-      style="width:auto"> Paysage — poussé vers les partages</label>
-    <label style="color:#efeae6"><input id="gen_pt" type="checkbox"
-      style="width:auto"> Portrait — local seulement
-      (portrait/, zip)</label>
-    <button class="ghost" onclick="save()">Enregistrer</button>
-    <span class="status" id="saved"></span>
-  </div>
-  <p class="sub" style="margin:10px 0 0">Changer de résolution re-rend
-  toutes les diapos à la prochaine génération. Le layout portrait
-  (ratio A4 : 1240×1754 en HD, 2480×3508 — 300 dpi — en UHD) est
-  écrit dans <code>portrait/</code>. Chaque partage choisit ce qu'il
-  reçoit (cases « Envoie : Paysage / Portrait ») — par défaut seul le
-  paysage part ; le portrait est aussi récupérable via le .zip ou la
-  galerie ci-dessous.</p>
-  <div class="row" style="margin-top:12px">
-    <label>Source des événements
-      <select id="data_source" style="width:auto">
-        <option value="site">Site leschampslibres.fr (scraping)</option>
-        <option value="openagenda">OpenAgenda API v2</option>
-      </select></label>
-    <label>Agenda OpenAgenda
-      <input id="oa_agenda" style="width:170px"
-        placeholder="leschampslibres"></label>
-    <label>Clé API OpenAgenda
-      <input id="oa_api_key" type="password" style="width:200px"
-        placeholder="(vide = export legacy déprécié)"></label>
-  </div>
-  <div class="row" style="margin-top:12px">
-    <label>Catégories (slugs, virgules — vide = 5 vitrine)
-      <input id="gen_categories" style="width:380px"
-        placeholder="rencontres-…, concerts-…"></label>
-    <label>Préfixe récurrents
-      <input id="next_label" style="width:220px"
-        placeholder="Prochaine séance : "></label>
-    <label>Séries suivies (slug = Libellé, par ligne)
-      <textarea id="series_map" rows="2" style="width:300px"
-        placeholder="les-grands-temoins = Les grands témoins"></textarea></label>
-  </div>
-  <div class="row" style="margin-top:12px">
-    <label>Specs affichées (virgules — vide = toutes)
-      <input id="specs_show" style="width:300px"
-        placeholder="Date, Durée, Lieu, Tarif"></label>
-    <label>Items retirés des specs (virgules)
-      <input id="spec_drops" style="width:300px"
-        placeholder="Dispositifs d'écoute amplifiée"></label>
-    <label>Specs forcées (Clé = valeur, par ligne)
-      <textarea id="spec_over" rows="2" style="width:300px"
-        placeholder="Lieu = Hall"></textarea></label>
-  </div>
-  <p class="sub" style="margin:10px 0 0"><b>Catégories</b> : slugs des
-  pages <code>/au-programme/categorie/&lt;slug&gt;</code> (rencontres-,
-  concerts-, projections-, spectacles-, evenements-, animations-,
-  ateliers-, expositions-, rdv4c-, visites-aux-champs-libres).
-  <b>Specs affichées</b> restreint les infos de la diapo — « Date » est
-  toujours gardée. <b>Items retirés</b> supprime des éléments des
-  valeurs composées (séparateur « · ») ; <b>Specs forcées</b> ajoute
-  ou remplace une spec sur toutes les diapos. <b>Heures fixes</b> :
-  régénère chaque jour à ces heures, en plus de l'intervalle.
-  <b>OpenAgenda</b> : données plus riches (horaires précis,
-  accessibilité structurée) — la clé se crée sur openagenda.com ; la
-  couleur des cartes reste lue sur le site, et tout échec OA retombe
-  automatiquement sur le scraping.</p>
+<details class="card" id="sec_log">
+  <summary>Journal</summary>
+  <pre id="log">—</pre>
 </details>
 
-<details class="card" id="sec_ftp" open>
+</div>
+<div class="tabpanel" id="tab_cfg">
+
+<details class="card" id="sec_set">
+  <summary>Réglages</summary>
+  <div class="fset" style="margin-top:0">
+    <h4>Planification</h4>
+    <div class="fgrid">
+      <label>Rafraîchissement auto (min, 0 = off)
+        <input id="interval" type="number" min="0" step="1"></label>
+      <label>Heures fixes (HH:MM, virgules)
+        <input id="sched_times" placeholder="06:00, 18:30"></label>
+      <label>Nb max d'événements (0 = tous)
+        <input id="maxev" type="number" min="0" step="1"></label>
+      <div class="sub wide" style="margin:0">Heures fixes : régénère
+      chaque jour à ces heures, en plus de l'intervalle
+      (ex : 30 min + 06:00, 18:30).</div>
+    </div>
+  </div>
+  <div class="fset">
+    <h4>Source &amp; contenu</h4>
+    <div class="fgrid">
+      <label>Source des événements
+        <select id="data_source">
+          <option value="site">Site leschampslibres.fr (scraping)</option>
+          <option value="openagenda">OpenAgenda API v2</option>
+        </select></label>
+      <label>Agenda OpenAgenda
+        <input id="oa_agenda" placeholder="leschampslibres"></label>
+      <label>Clé API OpenAgenda
+        <input id="oa_api_key" type="password"
+          placeholder="(vide = export legacy déprécié)"></label>
+      <label class="wide">Catégories (slugs, virgules — vide = 5 vitrine)
+        <input id="gen_categories"
+          placeholder="rencontres-…, concerts-…"></label>
+      <label>Préfixe récurrents
+        <input id="next_label" placeholder="Prochaine séance : "></label>
+      <label class="wide">Séries suivies (slug = Libellé, par ligne)
+        <textarea id="series_map" rows="2"
+          placeholder="les-grands-temoins = Les grands témoins"></textarea></label>
+      <div class="sub wide" style="margin:0">Catégories : slugs des pages
+      <code>/au-programme/categorie/&lt;slug&gt;</code> (rencontres-,
+      concerts-, projections-, spectacles-, evenements-, animations-,
+      ateliers-, expositions-, rdv4c-, visites-aux-champs-libres).
+      OpenAgenda : données plus riches (horaires précis, accessibilité
+      structurée) — la clé se crée sur openagenda.com ; la couleur des
+      cartes reste lue sur le site, et tout échec OA retombe
+      automatiquement sur le scraping.</div>
+    </div>
+  </div>
+  <div class="fset">
+    <h4>Infos affichées sur les diapos</h4>
+    <div class="fgrid">
+      <label class="wide">Specs affichées (virgules — vide = toutes)
+        <input id="specs_show" placeholder="Date, Durée, Lieu, Tarif"></label>
+      <label class="wide">Items retirés des specs (virgules)
+        <input id="spec_drops"
+          placeholder="Dispositifs d'écoute amplifiée"></label>
+      <label class="wide">Specs forcées (clé = valeur, par ligne)
+        <textarea id="spec_over" rows="2"
+          placeholder="Lieu = Hall"></textarea></label>
+      <div class="sub wide" style="margin:0">« Specs affichées » restreint
+      les infos de la diapo — « Date » est toujours gardée.
+      « Items retirés » supprime des éléments des valeurs composées
+      (séparateur « · ») ; « Specs forcées » ajoute ou remplace une spec
+      sur toutes les diapos.</div>
+    </div>
+  </div>
+  <div class="fset">
+    <h4>Rendu</h4>
+    <div class="fgrid">
+      <label>Résolution
+        <select id="res">
+          <option value="uhd">UHD 3840×2160</option>
+          <option value="hd">HD 1920×1080</option>
+        </select></label>
+      <label class="chk"><input id="gen_ls" type="checkbox"
+        style="width:auto"> Paysage — poussé vers les partages</label>
+      <label class="chk"><input id="gen_pt" type="checkbox"
+        style="width:auto"> Portrait — local (portrait/, zip)</label>
+      <div class="sub wide" style="margin:0">Changer de résolution re-rend
+      toutes les diapos à la prochaine génération. Le layout portrait
+      (ratio A4 : 1240×1754 en HD, 2480×3508 — 300 dpi — en UHD) est
+      écrit dans <code>portrait/</code>. Chaque partage choisit ce qu'il
+      reçoit (cases « Envoi : Paysage / Portrait ») — par défaut seul le
+      paysage part ; le portrait est aussi récupérable via le .zip ou la
+      galerie ci-dessous.</div>
+    </div>
+  </div>
+  <div class="row" style="margin-top:14px">
+    <button class="ghost" onclick="save()">Enregistrer les réglages</button>
+    <span class="status" id="saved"></span>
+  </div>
+</details>
+
+<details class="card" id="sec_ftp">
   <summary>Destination FTP</summary>
-  <div class="row">
+  <div class="fgrid">
     <label>Serveur FTP <input id="ftp_host" placeholder="nas.local"></label>
-    <label>Port <input id="ftp_port" type="number" min="1" style="width:80px"></label>
+    <label>Port <input id="ftp_port" type="number" min="1"></label>
     <label>Chemin distant <input id="ftp_path" placeholder="/diaporama"></label>
     <label>Utilisateur <input id="ftp_user"></label>
     <label>Mot de passe <input id="ftp_pass" type="password"
       placeholder="(inchangé si vide)"></label>
-    <label style="align-self:end"><input id="ftp_tls" type="checkbox"
+    <label class="chk"><input id="ftp_tls" type="checkbox"
       style="width:auto"> FTPS</label>
-    <label style="align-self:end;color:#8f8c8a">Envoie&nbsp;:</label>
-    <label style="align-self:end;color:#efeae6"><input id="ftp_ls"
-      type="checkbox" style="width:auto"> Paysage</label>
-    <label style="align-self:end;color:#efeae6"><input id="ftp_pt"
-      type="checkbox" style="width:auto"> Portrait</label>
+    <label class="chk"><input id="ftp_ls" type="checkbox"
+      style="width:auto"> Envoyer paysage</label>
+    <label class="chk"><input id="ftp_pt" type="checkbox"
+      style="width:auto"> Envoyer portrait</label>
+  </div>
+  <div class="row" style="margin-top:12px">
     <button class="ghost" onclick="save()">Enregistrer</button>
     <button class="ghost" onclick="testFtp()">Tester la connexion</button>
     <span class="status" id="ftptest"></span>
@@ -184,9 +234,9 @@ details.card[open]>summary{margin-bottom:14px}
   désactiver l'envoi. Les diapos sont aussi écrites dans le dossier local.</p>
 </details>
 
-<details class="card" id="sec_smb" open>
+<details class="card" id="sec_smb">
   <summary>Destination SMB</summary>
-  <div class="row">
+  <div class="fgrid">
     <label>Hôte SMB (IP ou nom du poste OBS / NAS)
       <input id="smb_host" placeholder="192.168.1.20"></label>
     <label>Partage <input id="smb_share" placeholder="diaporama"></label>
@@ -194,27 +244,27 @@ details.card[open]>summary{margin-bottom:14px}
     <label>Utilisateur <input id="smb_user" placeholder="DOMAINE\user"></label>
     <label>Mot de passe <input id="smb_pass" type="password"
       placeholder="(inchangé si vide)"></label>
-    <label style="align-self:end;color:#8f8c8a">Envoie&nbsp;:</label>
-    <label style="align-self:end;color:#efeae6"><input id="smb_ls"
-      type="checkbox" style="width:auto"> Paysage</label>
-    <label style="align-self:end;color:#efeae6"><input id="smb_pt"
-      type="checkbox" style="width:auto"> Portrait</label>
+    <label class="chk"><input id="smb_ls" type="checkbox"
+      style="width:auto"> Envoyer paysage</label>
+    <label class="chk"><input id="smb_pt" type="checkbox"
+      style="width:auto"> Envoyer portrait</label>
+  </div>
+  <div class="row" style="margin-top:12px">
     <button class="ghost" onclick="save()">Enregistrer</button>
     <button class="ghost" onclick="testSmb()">Tester la connexion</button>
     <span class="status" id="smbtest"></span>
   </div>
 </details>
 
-<details class="card" id="sec_local" open>
+<details class="card" id="sec_local">
   <summary>Dossiers locaux (disque / lecteur réseau)</summary>
-  <div class="row">
+  <div class="fgrid">
     <label>Dossier de sortie <input id="out_dir"
-      placeholder="(vide = dossier intégré de l'app)"
-      style="width:380px"></label>
-    <label style="align-self:end;color:#8f8c8a">Copie miroir&nbsp;:</label>
-    <label>vers <input id="local_dir"
-      placeholder="D:\diaporama ou \\serveur\partage\dossier"
-      style="width:300px"></label>
+      placeholder="(vide = dossier intégré de l'app)"></label>
+    <label>Copie miroir vers <input id="local_dir"
+      placeholder="D:\diaporama ou \\serveur\partage\dossier"></label>
+  </div>
+  <div class="row" style="margin-top:12px">
     <button class="ghost" onclick="save()">Enregistrer</button>
   </div>
   <p class="sub" style="margin:10px 0 0"><b>Dossier de sortie</b> : les
@@ -277,6 +327,8 @@ details.card[open]>summary{margin-bottom:14px}
       Retoucher la diapo</button>
     <span class="status" id="t_gen"></span>
   </div>
+  <div id="t_prev"><iframe title="aperçu diapo du jour"
+    loading="lazy"></iframe></div>
   <div id="t_editbox" style="display:none;margin-top:14px">
     <div class="row" style="margin-bottom:10px">
       <button class="ghost" onclick="saveTodayHtml()">
@@ -352,12 +404,10 @@ details.card[open]>summary{margin-bottom:14px}
     style="grid-template-columns:repeat(auto-fill,minmax(170px,1fr))"></div>
 </details>
 
-<details class="card" id="sec_log" open>
-  <summary>Journal</summary>
-  <pre id="log">—</pre>
-</details>
-
 </div>
+
+<div id="savebar"><span class="hint">● Réglages modifiés</span>
+<button onclick="save()">Enregistrer</button></div>
 
 <script>
 // onglets — panneau actif persisté en localStorage
@@ -382,9 +432,14 @@ document.querySelectorAll('details.card[id]').forEach(d => {
 });
 // champs en cours d'édition : ne pas les écraser au rafraîchissement auto
 const dirty = new Set();
+function updSavebar(){
+  document.getElementById('savebar').classList
+    .toggle('on', dirty.size > 0);
+}
 document.querySelectorAll('input,select,textarea').forEach(el => {
-  el.addEventListener('input', () => dirty.add(el.id));
-  el.addEventListener('change', () => dirty.add(el.id));
+  const mark = () => { dirty.add(el.id); updSavebar(); };
+  el.addEventListener('input', mark);
+  el.addEventListener('change', mark);
 });
 function setVal(id, v){
   const el = document.getElementById(id);
@@ -442,6 +497,12 @@ async function refresh(){
   setVal('ss_tdur_p', s.settings.ss_tdur_p);
   const el = document.getElementById('status');
   const last = s.last_run ? new Date(s.last_run*1000).toLocaleString('fr-FR') : 'jamais';
+  const hb = document.getElementById('hbadge');
+  hb.className = 'hbadge' + (s.running ? ' run' : s.last_error ? ' err' : '');
+  hb.textContent = s.running ? '⏳ génération en cours'
+    : s.last_error ? '⚠ erreur — voir journal'
+    : s.slides.length + ' diapos · ' + last;
+  hb.title = s.last_error || '';
   el.className = 'status ' + (s.running ? 'run' : s.last_error ? 'err' : 'ok');
   el.textContent = s.running ? '⏳ génération en cours…'
     : (s.last_error ? '⚠ '+s.last_error+' — ' : '') +
@@ -451,7 +512,7 @@ async function refresh(){
   const cell = (n, sub) =>
     `<div class="cell"><a href="/slides/${sub||''}${n}" target="_blank">
       <img loading="lazy" src="/slides/${sub||''}${n}"></a>
-     <div class="caption">${n}</div>
+     <div class="caption" title="${n}">${prettyName(n)}</div>
      <div class="acts">
        <button data-regen="${n}"
          title="Re-rendre le PNG depuis le HTML">↻</button>
@@ -465,6 +526,25 @@ async function refresh(){
   document.getElementById('grid_p').innerHTML =
     sp.map(n => cell(n, 'portrait/')).join('');
   if (!document.getElementById('t_ev').options.length) loadTodayEvents();
+  fetch('/today/index.html', {method:'HEAD'}).then(r => {
+    const p = document.getElementById('t_prev');
+    p.style.display = r.ok ? '' : 'none';
+    if (r.ok && !p.dataset.loaded){
+      p.dataset.loaded = '1';
+      p.querySelector('iframe').src = '/today/index.html';
+    }
+  }).catch(() => {});
+}
+// slide-AAAA-MM-JJ-HHhMM-slug.png → "04/10 · 16h00 · le cueilleur de moire"
+function prettyName(n){
+  const m = n.match(/^slide-\d{4}-(\d{2})-(\d{2})-(\d{2})h(\d{2})-(.+)\.png$/);
+  if (!m) return n;
+  return `${m[2]}/${m[1]} · ${m[3]}h${m[4]} · ${m[5].replace(/-/g,' ')}`;
+}
+function refreshTodayPreview(){
+  const p = document.getElementById('t_prev');
+  if (p.style.display !== 'none')
+    p.querySelector('iframe').src = '/today/index.html?t=' + Date.now();
 }
 async function run(){ await fetch('/api/run',{method:'POST'}); refresh(); }
 
@@ -573,6 +653,7 @@ async function genToday(){
       series:ev.series||''})})).json();
   el.textContent = r.ok ? 'générée ✓ envoyée sur le partage'
     : 'générée — envoi : '+(r.errors||[]).join(' ; ');
+  refreshTodayPreview();
   if (document.getElementById('t_editbox').style.display !== 'none')
     loadTodayPreview();
 }
@@ -641,6 +722,7 @@ async function saveTodayHtml(){
     body: JSON.stringify({html:h})})).json();
   el.textContent = r.ok ? 'enregistré ✓ PNG re-rendu, envoyé'
     : 'enregistrement : '+(r.errors||[r.error||'erreur']).join(' ; ');
+  refreshTodayPreview();
   loadTodayPreview();
 }
 async function save(){
@@ -674,7 +756,7 @@ async function save(){
       ss_delay_p:+ss_delay_p.value,
       ss_transition_p:ss_transition_p.value,
       ss_tdur_p:+ss_tdur_p.value})});
-  dirty.clear();
+  dirty.clear(); updSavebar();
   document.getElementById('saved').textContent = 'enregistré ✓';
   setTimeout(()=>document.getElementById('saved').textContent='',2000);
 }
