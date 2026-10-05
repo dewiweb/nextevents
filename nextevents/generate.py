@@ -1,5 +1,6 @@
 """Orchestration : scraping → images → HTML → PNG → manifeste → synchros."""
 
+import re
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -10,7 +11,7 @@ from .paths import OUT_DIR
 from .scrape import (
     DEFAULT_CATEGORIES, _norm_title, group_sessions,
     list_events, mark_series, parse_detail, parse_series_map,
-    site_card_index, site_detail_enrich,
+    site_card_index, site_detail_enrich, series_event_ids, SERIES,
 )
 from .settings import parse_kv
 from .slide import (
@@ -144,6 +145,20 @@ def generate(out_dir=None, max_events=0, pages=99, cfg=None, size=DEFAULT_SIZE):
                 return e
             with ThreadPoolExecutor(max_workers=6) as ex:
                 events = list(ex.map(_enrich, events))
+            # séries : OA ne porte pas l'appartenance — chaque page
+            # série du site liste ses événements (IDs dans les URLs) ;
+            # on matche via la page site retrouvée par titre
+            for slug, label in (series_map or SERIES).items():
+                ids = series_event_ids(slug)
+                if not ids:
+                    continue
+                for e in events:
+                    if e.get("series"):
+                        continue
+                    u = idx.get(_norm_title(e.get("title")))
+                    m = re.search(r"/(\d+)/?$", u or "")
+                    if m and m.group(1) in ids:
+                        e["series"] = label
             events.sort(key=lambda e: (
                 0 if e.get("pinned") else 1,
                 e.get("_dt") or (9999, 12, 31, 23, 59)))

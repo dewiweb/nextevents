@@ -427,17 +427,24 @@ def parse_series_map(text):
     return out
 
 
+def series_event_ids(slug):
+    """IDs numériques des événements liés depuis la page série du site
+    (/au-programme/<slug> liste des cartes dont l'URL finit par /NNNNN)."""
+    try:
+        return set(re.findall(
+            r"/au-programme/[^\"'<>]+/(\d+)",
+            get(f"{BASE}/au-programme/{slug}").text))
+    except Exception as e:
+        print(f"  ! page série {slug} KO : {e}")
+        return set()
+
+
 def mark_series(events, series_map=None):
     """Marque ev['series'] d'après les pages séries du site — source
     exhaustive (toutes les pages détail ne portent pas le bloc série).
     `series_map` surcharge les séries à suivre (réglage series_map)."""
     for slug, label in (series_map or SERIES).items():
-        try:
-            html_text = get(f"{BASE}/au-programme/{slug}").text
-        except Exception as e:
-            print(f"  ! page série {slug} KO : {e}")
-            continue
-        ids = set(re.findall(r"/au-programme/[^\"'<>]+/(\d+)", html_text))
+        ids = series_event_ids(slug)
         for ev in events:
             m = re.search(r"/(\d+)/?$", ev.get("url") or "")
             if m and m.group(1) in ids:
