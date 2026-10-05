@@ -42,7 +42,12 @@ details.card>summary::before{content:'▸';color:#8f8c8a;
 details.card[open]>summary::before{transform:rotate(90deg)}
 details.card>summary::-webkit-details-marker{display:none}
 details.card[open]>summary{margin-bottom:14px}
-.tabs{display:flex;gap:6px;margin:4px 0 16px;flex-wrap:wrap}
+.topbar{display:flex;align-items:center;gap:12px;margin:4px 0 16px;
+ flex-wrap:wrap}
+.topbar .actions{margin-left:auto;display:flex;gap:8px;
+ align-items:center}
+#btn_save.dirty{border-color:#f6e3bb;color:#f6e3bb}
+.tabs{display:flex;gap:6px;flex-wrap:wrap}
 .tabs button{background:#1e1d1c;color:#8f8c8a;border:1px solid #302f2e;
  border-radius:9px;padding:8px 18px;font-size:13.5px;cursor:pointer;
  font-family:inherit}
@@ -70,11 +75,6 @@ details.card[open]>summary{margin-bottom:14px}
  align-self:center;white-space:nowrap}
 .hbadge.run{color:#f6e3bb;border-color:#6b5a2e}
 .hbadge.err{color:#c99483;border-color:#6b3a2e}
-#savebar{position:fixed;right:20px;bottom:20px;z-index:60;display:none;
- align-items:center;gap:12px;background:#262523;border:1px solid #3d3a38;
- border-radius:12px;padding:10px 10px 10px 16px;box-shadow:0 6px 24px #0009}
-#savebar.on{display:flex}
-#savebar .hint{font-size:13px;color:#f6e3bb}
 #t_prev{background:#000;border:1px solid #302f2e;border-radius:10px;
  overflow:hidden;height:540px;margin-top:14px;display:none}
 #t_prev iframe{width:1920px;height:1080px;border:0;
@@ -90,19 +90,26 @@ details.card[open]>summary{margin-bottom:14px}
 </div>
 <p class="sub">Diaporama OBS des événements des Champs Libres — PNG 16:9</p>
 
+<div class="topbar">
 <nav class="tabs">
   <button data-tab="gen" class="active">Général</button>
   <button data-tab="today">Diapo du jour</button>
   <button data-tab="gal">Galerie</button>
   <button data-tab="cfg">Réglages</button>
 </nav>
+<div class="actions">
+  <span class="status" id="saved" style="font-size:13px"></span>
+  <button class="ghost" id="btn_save" onclick="save()">
+    Enregistrer les réglages</button>
+  <button id="btn_run" onclick="run()">Générer maintenant</button>
+</div>
+</div>
 
 <div class="tabpanel active" id="tab_gen">
 
 <details class="card" id="sec_run" open>
   <summary>Génération</summary>
   <div class="row">
-    <button id="run" onclick="run()">Générer maintenant</button>
     <button class="ghost" onclick="window.location='/api/download'">
       Télécharger les diapos (.zip)</button>
     <span class="status" id="status">…</span>
@@ -203,10 +210,6 @@ details.card[open]>summary{margin-bottom:14px}
       galerie ci-dessous.</div>
     </div>
   </div>
-  <div class="row" style="margin-top:14px">
-    <button class="ghost" onclick="save()">Enregistrer les réglages</button>
-    <span class="status" id="saved"></span>
-  </div>
 </details>
 
 <details class="card" id="sec_ftp">
@@ -226,7 +229,6 @@ details.card[open]>summary{margin-bottom:14px}
       style="width:auto"> Envoyer portrait</label>
   </div>
   <div class="row" style="margin-top:12px">
-    <button class="ghost" onclick="save()">Enregistrer</button>
     <button class="ghost" onclick="testFtp()">Tester la connexion</button>
     <span class="status" id="ftptest"></span>
   </div>
@@ -250,7 +252,6 @@ details.card[open]>summary{margin-bottom:14px}
       style="width:auto"> Envoyer portrait</label>
   </div>
   <div class="row" style="margin-top:12px">
-    <button class="ghost" onclick="save()">Enregistrer</button>
     <button class="ghost" onclick="testSmb()">Tester la connexion</button>
     <span class="status" id="smbtest"></span>
   </div>
@@ -263,9 +264,6 @@ details.card[open]>summary{margin-bottom:14px}
       placeholder="(vide = dossier intégré de l'app)"></label>
     <label>Copie miroir vers <input id="local_dir"
       placeholder="D:\diaporama ou \\serveur\partage\dossier"></label>
-  </div>
-  <div class="row" style="margin-top:12px">
-    <button class="ghost" onclick="save()">Enregistrer</button>
   </div>
   <p class="sub" style="margin:10px 0 0"><b>Dossier de sortie</b> : les
   diapos sont générées directement dedans (galerie et .zip inclus) —
@@ -406,9 +404,6 @@ details.card[open]>summary{margin-bottom:14px}
 
 </div>
 
-<div id="savebar"><span class="hint">● Réglages modifiés</span>
-<button onclick="save()">Enregistrer</button></div>
-
 <script>
 // onglets — panneau actif persisté en localStorage
 document.querySelectorAll('.tabs button').forEach(b => {
@@ -433,8 +428,10 @@ document.querySelectorAll('details.card[id]').forEach(d => {
 // champs en cours d'édition : ne pas les écraser au rafraîchissement auto
 const dirty = new Set();
 function updSavebar(){
-  document.getElementById('savebar').classList
-    .toggle('on', dirty.size > 0);
+  const b = document.getElementById('btn_save');
+  b.classList.toggle('dirty', dirty.size > 0);
+  b.textContent = dirty.size ? '● Enregistrer les réglages'
+                             : 'Enregistrer les réglages';
 }
 document.querySelectorAll('input,select,textarea').forEach(el => {
   const mark = () => { dirty.add(el.id); updSavebar(); };
@@ -507,7 +504,9 @@ async function refresh(){
   el.textContent = s.running ? '⏳ génération en cours…'
     : (s.last_error ? '⚠ '+s.last_error+' — ' : '') +
       s.slides.length+' diapos · dernière génération : '+last;
-  document.getElementById('run').disabled = s.running;
+  document.getElementById('btn_run').disabled = s.running;
+  document.getElementById('btn_run').textContent =
+    s.running ? '⏳ génération…' : 'Générer maintenant';
   document.getElementById('log').textContent = s.log.join('\n') || '—';
   const cell = (n, sub) =>
     `<div class="cell"><a href="/slides/${sub||''}${n}" target="_blank">
