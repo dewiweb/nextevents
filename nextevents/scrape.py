@@ -156,13 +156,57 @@ def site_card_index(categories=None):
 
 def banner_color(url):
     """Couleur éditoriale de la page détail (modifieur v-banner--X)."""
+    return site_detail_enrich(url).get("color")
+
+
+def site_detail_enrich(url, title=None):
+    """Compléments de la page détail du site absents d'OpenAgenda :
+    couleur de bannière, intervenants (<strong> de l'introduction
+    longue), animateur, note. Un seul fetch, toutes les infos."""
     try:
         soup = BeautifulSoup(get(url).text, "lxml")
     except Exception:
-        return None
+        return {}
+    out = {}
     banner = soup.select_one(".v-banner")
-    return _color_from_classes(
+    color = _color_from_classes(
         banner.get("class") if banner else [], "v-banner")
+    if color:
+        out["color"] = color
+    intro_long = soup.select_one(".s-introduction--long")
+    if intro_long:
+        for junk in intro_long.select("nav, .c-breadcrumb"):
+            junk.decompose()
+        text = "\n".join(
+            ln for ln in (
+                " ".join(p.get_text(" ").split())
+                for p in intro_long.select("p")
+            ) if ln
+        ) or " ".join(intro_long.get_text(" ").split())
+        # espaces invisibles du CMS (aussi pour _extract_note)
+        text = re.sub(r"[​­]", "", text)
+        text = re.sub(r"[  ]", " ", text)
+        # le titre du site porte parfois « avec X » absent du titre OA
+        h1 = soup.select_one("h1")
+        site_title = " ".join(h1.get_text().split()) if h1 else title
+        speakers, moderator = _extract_people(
+            intro_long, site_title, text)
+        if not speakers:
+            # repli ultime : le slug de l'URL porte parfois « avec-x-y »
+            # quand même le titre de la page l'omet
+            m = re.search(r"avec-([a-zà-ÿ-]+?)(?=/|$)", url)
+            for part in re.split(r"-et-", m.group(1)) if m else []:
+                nm = " ".join(w.capitalize() for w in part.split("-"))
+                if _is_name(nm):
+                    speakers.append({"name": nm, "quality": ""})
+        if speakers:
+            out["speakers"] = speakers
+        if moderator:
+            out["moderator"] = moderator
+        note = _extract_note(text)
+        if note:
+            out["note"] = note
+    return out
 
 
 def group_sessions(events, next_label=None):
@@ -414,9 +458,17 @@ _QUALITY_CUT = re.compile(
     r"|\s+et\s+anim[ée]e?|\s+anim[ée]e?\s+par|\s+En lien|\s+En partenariat"
     r"|\s+Rencontre|\s+Suivie|\s+Dans le cadre|\s+Production\b"
     r"|\s+Auteurs?\b|\s+mise en scène|\s+dont\b"
-    r"|,\s+(?:racontent|retrace|revient|explique|présente|analyse|interroge"
+    # « , <mot-outil> » : ce qui suit n'est plus la qualité
+    r"|,\s+(?:de|du|des|d['’]|la|le|les|à|auprès|pour|qui|que|dont|afin"
+    r"|nous|vous|on|en|et|ou)\s"
+    r"|,\s+(?:raconte|retrace|revient|explique|présente|analyse|interroge"
     r"|détaille|propose|débat|explore|explorent|décrypte|décryptent|imprime"
-    r"|impriment|emmène|plonge|interprète|nous|ils|il)\b).*", re.S)
+    r"|impriment|emmène|plonge|interprète|présentent|expose|exposent|"
+    r"racontent|introduit|intervient|nous|ils|il)\b"
+    # « , Nom Propre, » : un nouvel intervenant commence — la qualité
+    # du précédent s'arrête là (ex : « chercheuse kosovare, Régine
+    # Waintrater, psychanalyste »)
+    rf"|,\s+{_NAME}(?=\s*,)).*", re.S)
 
 # la qualité commence directement par un verbe narratif → pas une qualité
 _LEADING_VERB = re.compile(
@@ -440,12 +492,57 @@ def _is_name(s):
     )
 
 
+# mots qui trahissent une qualité/fonction — leur présence est requise
+# pour le repli « Nom, qualité » en texte libre (intros sans <strong>)
+_QUAL_WORDS = (
+    r"artiste|auteur|autrice|romanci|po[èe]te|essayiste|dramaturge|"
+    r"scénographe|metteur|choréograph|danseu|comédien|circassien|"
+    r"jongleur|musicien|compositeur|compositrice|interprète|performeu|"
+    r"vidéaste|plasticien|photographe|illustrat|réalisat|producteur|"
+    r"chercheur|chercheure|historien|sociologue|philosophe|journaliste|"
+    r"médecin|architecte|designer|libraire|éditeur|éditrice|traduct|"
+    r"curateur|conservateur|médiateur|vulgarisat|ingénieur|biologiste|"
+    r"neuroscien|géographe|économiste|diplomate|magistrat|avocat|"
+    r"juriste|ethno|anthropolog|archéolog|paléo|géolog|astrophys|"
+    r"physicien|mathématici|informatici|professeur|directeur|directrice"
+)
+
+# « Nom, qualité » et « Nom et Nom, qualité commune » en plein texte.
+# La qualité peut commencer directement par le mot de fonction
+# (« , libraire de… ») et s'arrête à la prochaine suite « , Nom
+# Propre », à la ponctuation forte ou en fin de chaîne — le nettoyage
+# narratif revient ensuite à _clean_quality.
+_PERS_LIST_RE = re.compile(
+    rf"(?<![\wÀ-ÿ])({_NAME}(?:\s*(?:,| et )\s*{_NAME})*)"
+    rf"\s*,\s*([^.;!?\n]{{0,140}}?(?:{_QUAL_WORDS})[^.;!?\n]{{0,220}})"
+    rf"(?=\s*,\s*{_NAME}|\s*[.;!?]|\s*$)")
+
+# faux positifs : collectifs, lieux, médias capturés comme noms propres
+_DENY_NAME = re.compile(
+    r"champs\s+libres|bibliothèque|médiathèque|auditorium|musée|"
+    r"université|laboratoire|association|collectif|compagnie|"
+    r"fondation|institut|librairie|éditions|grand\s+continent|"
+    r"sciences\s+ouest", re.I)
+
+# un nom propre ne commence jamais par un article/préposition
+_NAME_LEAD_BAD = re.compile(
+    r"^(?:du|de|des|la|le|les|l['’]|un|une|en|sur|sous|au|aux|"
+    r"dans|par|pour|avec)\b", re.I)
+
+
 def _extract_people(intro_long, title, text):
     speakers, seen = [], set()
+    # espaces invisibles du CMS : zero-width et soft hyphen fusionnent
+    # les matches, les insécables cassent les frontières de mots
+    # (ex : « Mirabelle Fr&#8203;éville » → animateur tronqué)
+    text = re.sub(r"[​­]", "", text or "")
+    text = re.sub(r"[  ]", " ", text)
 
     def add(name, quality=""):
+        name = re.sub(r"^avec\s+(?:l['’]\s*)?", "", name, flags=re.I)
         name = name.strip(" ,.;:")
-        if _is_name(name) and name not in seen:
+        if _is_name(name) and not _DENY_NAME.search(name) \
+                and not _NAME_LEAD_BAD.match(name) and name not in seen:
             seen.add(name)
             speakers.append({"name": name, "quality": quality[:220]})
 
@@ -479,9 +576,19 @@ def _extract_people(intro_long, title, text):
         for m in re.finditer(rf"({_NAME})\s+est\s+([^.;\n]{{4,180}})", text):
             add(m.group(1), _clean_quality(m.group(2)))
 
+    # repli : « Nom, qualité » / « Nom et Nom, qualité commune » en
+    # pleine prose (intros sans <strong> : « Carlo Cerato, artiste
+    # circassien jongleur, Jean-Michel Courty et Édouard Kierlik,
+    # professeurs de physique à Sorbonne Université »)
+    if not speakers:
+        for m in _PERS_LIST_RE.finditer(text):
+            qual = _clean_quality(m.group(2))
+            for nm in re.split(r"\s*,\s*|\s+et\s+", m.group(1)):
+                add(nm, qual)
+
     # repli : « … avec X » dans le titre
     if not speakers:
-        m = re.search(r"avec\s+(.{3,50})$", title, re.I)
+        m = re.search(r"avec\s+(.{3,50})$", title or "", re.I)
         if m:
             for nm in re.split(r"\s+et\s+|,", m.group(1)):
                 add(nm)
@@ -493,8 +600,13 @@ def _extract_people(intro_long, title, text):
         if m:
             moderator = m.group(1)
             break
-    # l'animateur n'est pas un intervenant
+    # l'animateur n'est pas un intervenant ; le texte aplati peut avoir
+    # tronqué son nom (balise éclatée) → rapprocher du nom connu
     if moderator:
+        for s in speakers:
+            if s["name"].startswith(moderator):
+                moderator = s["name"]
+                break
         speakers = [s for s in speakers if s["name"] != moderator]
     return speakers, moderator
 

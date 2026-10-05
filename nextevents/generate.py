@@ -8,9 +8,9 @@ from PIL import Image
 from .media import download_image, ensure_fonts
 from .paths import OUT_DIR
 from .scrape import (
-    DEFAULT_CATEGORIES, _norm_title, banner_color, group_sessions,
+    DEFAULT_CATEGORIES, _norm_title, group_sessions,
     list_events, mark_series, parse_detail, parse_series_map,
-    site_card_index,
+    site_card_index, site_detail_enrich,
 )
 from .settings import parse_kv
 from .slide import (
@@ -126,19 +126,24 @@ def generate(out_dir=None, max_events=0, pages=99, cfg=None, size=DEFAULT_SIZE):
         try:
             from .oa import filter_categories, oa_list_events
             events = filter_categories(oa_list_events(cfg), cats)
-            # la couleur de bannière est un choix éditorial du site,
-            # absent d'OA — on la réinjecte via la page détail
-            # retrouvée par titre (URLs OA ≠ URLs du site)
+            # couleur de bannière et intervenants/animateur sont des
+            # données du site absentes d'OA (html souvent vide) — on les
+            # réinjecte via la page détail retrouvée par titre
+            # (URLs OA ≠ URLs du site), une seule requête par événement
             idx = site_card_index(cats)
-            def _col(e):
+            def _enrich(e):
                 u = idx.get(_norm_title(e.get("title")))
-                if u:
-                    c = banner_color(u)
-                    if c:
-                        e["color"] = c
+                if not u:
+                    return e
+                d = site_detail_enrich(u, e.get("title"))
+                if d.get("color"):
+                    e["color"] = d["color"]
+                for k in ("speakers", "moderator", "note"):
+                    if not e.get(k) and d.get(k):
+                        e[k] = d[k]
                 return e
             with ThreadPoolExecutor(max_workers=6) as ex:
-                events = list(ex.map(_col, events))
+                events = list(ex.map(_enrich, events))
             events.sort(key=lambda e: (
                 0 if e.get("pinned") else 1,
                 e.get("_dt") or (9999, 12, 31, 23, 59)))
