@@ -39,6 +39,77 @@ document.querySelectorAll(
   el.addEventListener('input', mark);
   el.addEventListener('change', mark);
 });
+// Catégories : une case par catégorie connue (renvoyée par /api/status)
+// + champ « autres slugs » pour les pages catégorie non listées. La
+// valeur canonique reste la liste de slugs à virgules (hidden
+// #gen_categories) — aucune case cochée et extras vide = 5 vitrine.
+function setCats(v, cats){
+  const box = document.getElementById('cat_boxes');
+  if (!box) return;
+  if (!box.childElementCount){
+    cats.forEach(c => {
+      const cb = document.createElement('input');
+      cb.type = 'checkbox'; cb.id = 'cat_' + c.slug;
+      cb.dataset.slug = c.slug;
+      cb.addEventListener('change', syncCats);
+      const lb = document.createElement('label');
+      lb.className = 'cat'; lb.title = c.slug;
+      lb.append(cb, document.createTextNode(' ' + c.label));
+      box.appendChild(lb);
+    });
+  }
+  if (dirty.has('gen_categories') ||
+      dirty.has('gen_categories_extra')) return;
+  const known = new Set(cats.map(c => c.slug));
+  const vals = (v || '').split(',').map(x => x.trim()).filter(Boolean);
+  box.querySelectorAll('input[type=checkbox]').forEach(cb =>
+    cb.checked = vals.includes(cb.dataset.slug));
+  const ex = document.getElementById('gen_categories_extra');
+  if (ex !== document.activeElement)
+    ex.value = vals.filter(x => !known.has(x)).join(', ');
+  document.getElementById('gen_categories').value = v || '';
+}
+function syncCats(){
+  const vals = [...document.querySelectorAll('#cat_boxes input:checked')]
+    .map(cb => cb.dataset.slug);
+  const extra = document.getElementById('gen_categories_extra').value
+    .split(',').map(x => x.trim()).filter(Boolean);
+  document.getElementById('gen_categories').value =
+    [...vals, ...extra].join(', ');
+  dirty.add('gen_categories'); updSavebar();
+}
+document.getElementById('gen_categories_extra')
+  .addEventListener('input', syncCats);
+
+async function uploadLogo(inp){
+  const f = inp.files[0]; inp.value = '';
+  const msg = document.getElementById('logo_up_msg');
+  if (!f) return;
+  msg.textContent = 'envoi…';
+  const fd = new FormData(); fd.append('file', f);
+  let r;
+  try {
+    r = await (await fetch('/api/series/logo',
+      {method:'POST', body:fd})).json();
+  } catch(e){ msg.textContent = 'échec : ' + e; return; }
+  if (!r.ok){ msg.textContent = 'échec : ' + (r.error || '?'); return; }
+  // associe le logo à la dernière ligne de série sans « | »
+  const ta = document.getElementById('series_map');
+  const lines = ta.value.split('\n');
+  let done = false;
+  for (let i = lines.length - 1; i >= 0; i--){
+    if (lines[i].trim() && !lines[i].includes('|')){
+      lines[i] = lines[i].replace(/\s+$/, '') + ' | ' + r.name;
+      done = true; break;
+    }
+  }
+  ta.value = lines.join('\n');
+  dirty.add('series_map'); updSavebar();
+  msg.textContent = done
+    ? r.name + ' associé à la dernière série — vérifier la ligne'
+    : 'enregistré — ajouter « | ' + r.name + ' » à la ligne de la série';
+}
+
 function setVal(id, v){
   const el = document.getElementById(id);
   if (!el || dirty.has(id) || el === document.activeElement) return;
@@ -59,7 +130,7 @@ async function refresh(){
   document.getElementById('oa_api_key').placeholder =
     s.settings.has_oa_key ? '(enregistrée — vide = inchangée)'
                           : '(vide = export legacy déprécié)';
-  setVal('gen_categories', s.settings.gen_categories);
+  setCats(s.settings.gen_categories, s.categories || []);
   setVal('next_label', s.settings.next_label);
   setVal('series_map', s.settings.series_map);
   setVal('specs_show', s.settings.specs_show);

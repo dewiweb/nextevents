@@ -72,18 +72,31 @@
       <label>Clé API OpenAgenda
         <input id="oa_api_key" type="password"
           placeholder="(vide = export legacy déprécié)"></label>
-      <label class="wide">Catégories (slugs, virgules — vide = 5 vitrine)
-        <input id="gen_categories"
-          placeholder="rencontres-…, concerts-…"></label>
+      <div class="wide"><span class="lab">Catégories générées
+        (aucune cochée = 5 vitrine)</span>
+        <div id="cat_boxes" class="catgrid"></div>
+        <input id="gen_categories" type="hidden">
+        <input id="gen_categories_extra" style="margin-top:6px"
+          placeholder="autres slugs, virgules (optionnel)"></div>
       <label>Préfixe récurrents
         <input id="next_label" placeholder="Prochaine séance : "></label>
-      <label class="wide">Séries suivies (slug = Libellé, par ligne)
+      <label class="wide">Séries suivies (slug = Libellé [| logo],
+        par ligne)
         <textarea id="series_map" rows="2"
-          placeholder="les-grands-temoins = Les grands témoins"></textarea></label>
+          placeholder="les-grands-temoins = Les grands témoins"></textarea>
+      </label>
+      <div class="wide" style="display:flex;align-items:center;gap:10px">
+        <button type="button" class="ghost sm"
+          onclick="logo_up.click()">Uploader un logo de série…</button>
+        <input id="logo_up" type="file" accept="image/*" hidden
+          onchange="uploadLogo(this)">
+        <span id="logo_up_msg" class="sub"></span>
+      </div>
       <div class="sub wide" style="margin:0">Catégories : slugs des pages
-      <code>/au-programme/categorie/&lt;slug&gt;</code> (rencontres-,
-      concerts-, projections-, spectacles-, evenements-, animations-,
-      ateliers-, expositions-, rdv4c-, visites-aux-champs-libres).
+      <code>/au-programme/categorie/&lt;slug&gt;</code>.
+      Séries : le logo uploadé se référence par « | logos/fichier.png »
+      en fin de ligne — il remplace le rond de série sur la diapo du
+      jour (PNG ou SVG avec transparence conseillé).
       OpenAgenda : données plus riches (horaires précis, accessibilité
       structurée) — la clé se crée sur openagenda.com ; la couleur des
       cartes reste lue sur le site, et tout échec OA retombe

@@ -412,19 +412,64 @@ def _extract_access(text):
     return "\n".join(out)
 
 
-def parse_series_map(text):
-    """« slug = Libellé » par ligne → dict (réglage series_map).
-    Lignes sans « = » ignorées ; dict vide si champ vide."""
-    out = {}
+def parse_series(text):
+    """« slug = Libellé [| fichier-logo] » par ligne → [(slug, libellé,
+    logo)]. Lignes vides, « # » ou sans « = » ignorées."""
+    out = []
     for line in (text or "").splitlines():
         line = line.strip()
-        if not line or "=" not in line:
+        if not line or line.startswith("#") or "=" not in line:
             continue
-        slug, _, label = line.partition("=")
-        slug, label = slug.strip(), label.strip()
-        if slug and label:
-            out[slug] = label
+        k, rest = line.split("=", 1)
+        label, _, logo = rest.partition("|")
+        k, label, logo = k.strip(), label.strip(), logo.strip()
+        if k and label:
+            out.append((k, label, logo or None))
     return out
+
+
+def parse_series_map(text):
+    """« slug = Libellé » par ligne → dict (réglage series_map).
+    La partie « | logo.png » éventuelle est ignorée — elle ne sert
+    qu'au rendu du badge (cf. series_brand/today)."""
+    return {k: l for k, l, _ in parse_series(text)}
+
+
+def series_logo(text, label):
+    """Chemin du logo associé au libellé de série, ou None."""
+    return next((g for _, l, g in parse_series(text)
+                 if l == label and g), None)
+
+
+def _norm_series(s):
+    """minuscules, sans accents ni séparateurs — tolère « Grandstemoins »
+    vs « grandstemoins » ou « Les grands témoins »."""
+    import unicodedata
+    s = unicodedata.normalize("NFD", s or "")
+    return "".join(c for c in s
+                   if not unicodedata.combining(c) and c.isalnum()).lower()
+
+
+def series_brand(text, series):
+    """Résout (libellé canonique, logo) pour une série détectée —
+    events.json peut contenir un libellé d'une ancienne config ou le
+    keyword brut (« Grandstemoins ») : on matche clé et libellé de
+    series_map (normalisés), puis les tableaux par défaut site/OA.
+    Renvoie (None, None) si la série n'est dans aucun tableau —
+    l'appelant garde alors la valeur brute."""
+    s = _norm_series(series)
+    if not s:
+        return "", None
+    from .oa import SERIES_KEYWORDS
+    tables = [parse_series(text),
+              [(k, l, None) for k, l in SERIES.items()],
+              [(k, l, None) for k, l in SERIES_KEYWORDS.items()]]
+    for rows in tables:
+        for k, l, g in rows:
+            nk, nl = _norm_series(k), _norm_series(l)
+            if s == nl or s == nk or s in nk or nk in s:
+                return l, g
+    return None, None
 
 
 def series_event_ids(slug):

@@ -89,7 +89,14 @@ def today_html(data, fonts):
     )
     logo = ASSET_DIR / "logo-mark.svg"
     logo_full = ASSET_DIR / "logo-full.svg"
-    if series:
+    series_logo_uri = None
+    if series and data.get("series_logo"):
+        series_logo_uri = _img_uri(data["series_logo"])
+    if series_logo_uri:
+        # identité propre de la série : le logo remplace le rond GT
+        badge_html = (f'<div class="gt-badge gt-badge--img">'
+                      f'<img src="{series_logo_uri}"></div>')
+    elif series:
         badge_html = (
             f'<div class="gt-badge"><span class="gt-name">'
             f'{html.escape(series)}</span><span class="gt-logo">'
@@ -132,11 +139,48 @@ def today_html(data, fonts):
     )
 
 
-def qr_html(series, bg, fonts):
+def _img_uri(path_str):
+    """Fichier image → data URI. Les chemins relatifs sont résolus
+    depuis le dossier de sortie configuré, son parent, puis les assets
+    et la racine du projet."""
+    p = Path(path_str).expanduser()
+    if not p.is_absolute():
+        from .paths import ROOT
+        from .settings import resolve_out_dir
+        out = resolve_out_dir()
+        for base in (out, out.parent, ASSET_DIR, ROOT):
+            cand = base / p
+            if cand.is_file():
+                p = cand
+                break
+    if not p.is_file():
+        return None
+    import mimetypes
+    mime = mimetypes.guess_type(p.name)[0] or "image/png"
+    return ("data:" + mime + ";base64,"
+            + base64.b64encode(p.read_bytes()).decode())
+
+
+def _series_url(series, series_map=None):
+    """URL de la page série sur le site. Les clés de series_map sont des
+    slugs de page série *ou* des keywords OA : on essaie chaque clé dont
+    le libellé correspond, la première qui répond gagne. Retombe sur la
+    page programme générique."""
+    from .scrape import get
+    cands = [k for k, l in (series_map or SERIES).items() if l == series]
+    for slug in cands:
+        try:
+            get(f"{BASE}/au-programme/{slug}")
+            return f"{BASE}/au-programme/{slug}"
+        except Exception:
+            continue  # keyword OA sans page série équivalente
+    return f"{BASE}/au-programme"
+
+
+def qr_html(series, bg, fonts, series_map=None):
     """Slide QR d'une série (modèle com : « Retrouvez … en scannant le
     QR code ») — même fond sombre que la diapo du jour."""
-    slug = next((s for s, l in SERIES.items() if l == series), None)
-    url = f"{BASE}/au-programme/{slug}" if slug else f"{BASE}/au-programme"
+    url = _series_url(series, series_map)
     import qrcode
     qr = qrcode.QRCode(border=0, box_size=18)
     qr.add_data(url)
@@ -175,8 +219,12 @@ def write_today(data, out_dir=None):
     fonts = ensure_fonts()
     dest.write_text(today_html(data, fonts), encoding="utf-8")
     if series:
+        from .settings import load_settings
+        from .scrape import parse_series_map
+        smap = parse_series_map(
+            (load_settings() or {}).get("series_map", "")) or None
         (d / "qr.html").write_text(
-            qr_html(series, bg, fonts), encoding="utf-8")
+            qr_html(series, bg, fonts, smap), encoding="utf-8")
     else:
         # pas de série : pas de slide QR — on supprime les restes d'une
         # éventuelle génération précédente

@@ -11,7 +11,7 @@ bp = Blueprint("today", __name__)
 
 def _today_data(body):
     """Champs du formulaire webui → données de la diapo du jour."""
-    return {
+    data = {
         "title": str(body.get("title") or "").strip(),
         "subtitle": str(body.get("subtitle") or "").strip(),
         "tag": str(body.get("tag") or "").strip(),
@@ -34,6 +34,18 @@ def _today_data(body):
         "access": str(body.get("access") or "").strip(),
         "series": str(body.get("series") or "").strip(),
     }
+    # libellé canonique + logo éventuel de la série (réglage
+    # « slug = Libellé | logo.png ») — le logo remplace le rond de
+    # série sur la diapo
+    series = data["series"]
+    if series:
+        from .scrape import series_brand
+        smap = (load_settings() or {}).get("series_map", "")
+        label, logo = series_brand(smap, series)
+        data["series"] = label or series
+        if logo:
+            data["series_logo"] = logo
+    return data
 
 
 def _today_file():

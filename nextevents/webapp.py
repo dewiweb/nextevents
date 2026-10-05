@@ -60,6 +60,7 @@ def api_status():
         except Exception:
             pass
     lr = state["last_run"]
+    from .scrape import CATEGORIES
     return jsonify(
         running=state["running"],
         last_run=lr,
@@ -73,6 +74,7 @@ def api_status():
         slides_count=len(sl),
         slides_portrait=sl_p,
         slide_meta=meta,
+        categories=[{"label": l, "slug": c} for l, c in CATEGORIES],
         settings={**s, "has_pass": has_pass, "has_smb_pass": has_smb_pass,
                   "has_oa_key": has_oa_key},
     )
@@ -104,6 +106,27 @@ def api_settings():
             s[k] = str(body[k])
     save_settings(s)
     return jsonify(ok=True)
+
+
+@app.post("/api/series/logo")
+def api_series_logo():
+    """Upload d'un logo de série — enregistré dans <sortie>/logos/, à
+    référencer dans series_map : « slug = Libellé | logos/fichier.png »."""
+    from werkzeug.utils import secure_filename
+
+    f = request.files.get("file")
+    if not f or not f.filename:
+        return jsonify(ok=False, error="aucun fichier"), 400
+    name = secure_filename(f.filename)
+    if not name or "." not in name:
+        return jsonify(ok=False, error="nom de fichier invalide"), 400
+    if name.rsplit(".", 1)[1].lower() not in (
+            "png", "svg", "jpg", "jpeg", "webp", "gif"):
+        return jsonify(ok=False, error="format image attendu"), 400
+    d = resolve_out_dir(load_settings()) / "logos"
+    d.mkdir(parents=True, exist_ok=True)
+    f.save(d / name)
+    return jsonify(ok=True, name=f"logos/{name}")
 
 
 @app.post("/api/ftp/test")
