@@ -12,3 +12,12 @@ services:
     volumes:
       # diapos générées + settings.json — persistent entre les recreates
       - ./data:/data
+
+networks:
+  default:
+    ipam:
+      config:
+        # sous-réseau épinglé : l'auto-allocation de docker a un jour
+        # choisi 192.168.16.0/20 qui englobe le VLAN caméras
+        # (192.168.30.x) et en interceptait tout le trafic
+        - subnet: 192.168.250.0/24
