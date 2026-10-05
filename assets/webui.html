@@ -508,10 +508,13 @@ async function refresh(){
   document.getElementById('btn_run').textContent =
     s.running ? '⏳ génération…' : 'Générer maintenant';
   document.getElementById('log').textContent = s.log.join('\n') || '—';
+  const esc = t => t.replace(/&/g,'&amp;').replace(/</g,'&lt;')
+                    .replace(/>/g,'&gt;');
+  const meta = s.slide_meta || {};
   const cell = (n, sub) =>
     `<div class="cell"><a href="/slides/${sub||''}${n}" target="_blank">
       <img loading="lazy" src="/slides/${sub||''}${n}"></a>
-     <div class="caption" title="${n}">${prettyName(n)}</div>
+     <div class="caption" title="${n}">${esc(meta[n] || prettyName(n))}</div>
      <div class="acts">
        <button data-regen="${n}"
          title="Re-rendre le PNG depuis le HTML">↻</button>

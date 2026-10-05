@@ -36,6 +36,17 @@ def api_status():
     has_oa_key = bool(s.pop("oa_api_key"))
     sl = slides()
     sl_p = slides_portrait()
+    # nom.png → étiquette lisible pour la galerie (titre complet, accents
+    # inclus — le nom de fichier est slugifié)
+    meta = {}
+    for i, e in enumerate(_events_meta()):
+        try:
+            label = " — ".join(
+                x for x in (e.get("specs", {}).get("Date", ""),
+                            e.get("title", "")) if x)
+            meta[_slide.slide_name(e, i) + ".png"] = label
+        except Exception:
+            pass
     lr = state["last_run"]
     return jsonify(
         running=state["running"],
@@ -49,6 +60,7 @@ def api_status():
         slides=sl,
         slides_count=len(sl),
         slides_portrait=sl_p,
+        slide_meta=meta,
         settings={**s, "has_pass": has_pass, "has_smb_pass": has_smb_pass,
                   "has_oa_key": has_oa_key},
     )
