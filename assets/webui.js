@@ -129,8 +129,11 @@ async function refresh(){
   document.getElementById('grid_p').innerHTML =
     sp.map(n => cell(n, 'portrait/')).join('');
   if (!document.getElementById('t_ev').options.length) loadTodayEvents();
+  // l'aperçu reste si un live-preview srcdoc est affiché, même quand
+  // index.html n'existe pas encore sur le disque
   fetch('/today/index.html', {method:'HEAD'})
-    .then(r => showTodayTools(r.ok)).catch(() => {});
+    .then(r => showTodayTools(r.ok || !!t_frame().srcdoc))
+    .catch(() => {});
   fetch('/today/qr.html', {method:'HEAD'}).then(r => {
     document.getElementById('t_files').style.display = r.ok ? '' : 'none';
   }).catch(() => {});
@@ -257,27 +260,31 @@ function liveTodayPreview(){
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify(d)})).json();
     if (!r.ok) return;
+    const f = t_frame();
+    if (r.html === f.dataset.lastHtml) return;  // pas de reload si identique
+    f.dataset.lastHtml = r.html;
     const p = document.getElementById('t_prev');
     if (p.style.display === 'none'){
       p.dataset.loaded = '1';   // srcdoc prime : pas de chargement fichier
       showTodayTools(true);
     }
-    const f = t_frame();
+    p.style.opacity = '0';      // fondu plutôt que flash noir au rechargement
     f.onload = () => {
       const dd = f.contentDocument;
       if (dd && dd.body) dd.body.contentEditable = 'true';
+      p.style.opacity = '1';
     };
     f.removeAttribute('src');
     f.srcdoc = r.html;
   }, 700);
 }
-['t_ev','t_title','t_sub','t_mod','t_note','t_access'].forEach(id => {
-  const el = document.getElementById(id);
-  el.addEventListener('input', liveTodayPreview);
-  el.addEventListener('change', liveTodayPreview);
-});
+// « change » seulement : la preview se rafraîchit quand on quitte le
+// champ (pas à chaque frappe — change se déclenche au blur)
+['t_ev','t_title','t_sub','t_mod','t_note','t_access'].forEach(id =>
+  document.getElementById(id)
+    .addEventListener('change', liveTodayPreview));
 document.getElementById('t_speakers')
-  .addEventListener('input', liveTodayPreview);
+  .addEventListener('change', liveTodayPreview);
 async function genToday(){
   const el = document.getElementById('t_gen');
   el.textContent = 'génération…';
@@ -382,6 +389,7 @@ function fitTodayPreview(){
 window.addEventListener('resize', fitTodayPreview);
 function loadTodayPreview(){
   const f = t_frame();
+  delete f.dataset.lastHtml;    // la source redevient le fichier disque
   // cache-bust : index.html vient d'être réécrit
   f.onload = () => {
     const d = f.contentDocument;

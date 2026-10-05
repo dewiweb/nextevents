@@ -74,7 +74,7 @@ details.card[open]>summary{margin-bottom:14px}
 .hbadge.run{color:#f6e3bb;border-color:#6b5a2e}
 .hbadge.err{color:#c99483;border-color:#6b3a2e}
 #t_prev{background:#000;border:1px solid #302f2e;border-radius:10px;
- overflow:hidden;aspect-ratio:16/9;cursor:text}
+ overflow:hidden;aspect-ratio:16/9;cursor:text;transition:opacity .15s}
 #t_prev iframe{width:1920px;height:1080px;border:0;
  transform:scale(.5);transform-origin:0 0}
 .codebox{position:relative;border:1px solid #302f2e;border-radius:10px;
