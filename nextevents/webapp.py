@@ -11,7 +11,7 @@ from flask import Flask, jsonify, request, send_file, send_from_directory
 
 from .media import round_logo
 from .paths import ASSET_DIR
-from .runner import run_generation, slides, slides_portrait
+from .runner import next_run, run_generation, slides, slides_portrait
 from .settings import (
     DEFAULTS, SETTINGS_FILE, load_settings, resolve_out_dir, save_settings,
     state,
@@ -85,6 +85,7 @@ def api_status():
             if lr else None
         ),
         last_error=state["last_error"],
+        next_run=next_run(s, lr),
         log=state["log"],
         slides=sl,
         slides_count=len(sl),

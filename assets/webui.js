@@ -304,6 +304,26 @@ async function refresh(){
   document.getElementById('btn_run').disabled = s.running;
   document.getElementById('btn_run').textContent =
     s.running ? '⏳ génération…' : 'Générer maintenant';
+  // tableau de bord : prochaine exécution + destinations actives
+  const chip = (id, on, lbl) => {
+    const c = document.getElementById(id);
+    c.textContent = (on ? '● ' : '○ ') + lbl;
+    c.classList.toggle('on', on);
+  };
+  chip('d_next', !!s.next_run, s.next_run
+    ? 'prochaine génération ' +
+      new Date(s.next_run * 1000).toLocaleString('fr-FR',
+        {day:'2-digit', month:'2-digit', hour:'2-digit',
+         minute:'2-digit'})
+    : 'pas de génération planifiée');
+  chip('d_ftp', !!s.settings.ftp_host,
+    'FTP' + (s.settings.ftp_host ? ' ' + s.settings.ftp_host : ''));
+  chip('d_smb', !!(s.settings.smb_host && s.settings.smb_share),
+    'SMB' + (s.settings.smb_host ? ' ' + s.settings.smb_host : ''));
+  chip('d_local', !!s.settings.local_dir,
+    'copie' + (s.settings.local_dir ? ' ' + s.settings.local_dir : ''));
+  chip('d_series', (s.series_options || []).length > 0,
+    (s.series_options || []).length + ' série(s) suivie(s)');
   const logTxt = s.log.join('\n') || '—';
   if (logTxt !== _logTxt){
     _logTxt = logTxt;

@@ -77,6 +77,35 @@ def _times_due(spec, last_run, now=None):
     return bool(past) and (last_run is None or last_run < max(past))
 
 
+def next_run(s, last_run, now=None):
+    """Timestamp de la prochaine exécution planifiée, ou None si rien
+    n'est programmé (ni intervalle ni heures fixes)."""
+    import datetime as dt
+    now = now or dt.datetime.now()
+    now_ts = now.timestamp()
+    cands = []
+    mins = _interval_min(s)
+    if mins > 0:
+        # prochaine échéance après now, à partir du dernier run
+        base = last_run or (now_ts - mins * 60)
+        n = base + mins * 60
+        while n <= now_ts:
+            n += mins * 60
+        cands.append(n)
+    for tok in (s.get("sched_times") or "").split(","):
+        try:
+            h, m = (int(x) for x in tok.strip().split(":"))
+        except ValueError:
+            continue
+        t = dt.time(h % 24, m % 60)
+        for day in (now.date(), now.date() + dt.timedelta(days=1)):
+            ts = dt.datetime.combine(day, t).timestamp()
+            if ts > now_ts:
+                cands.append(ts)
+                break
+    return min(cands) if cands else None
+
+
 def scheduler():
     while True:
         time.sleep(60)

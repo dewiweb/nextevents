@@ -27,11 +27,24 @@
 <div class="tabpanel active" id="tab_gen">
 
 <details class="card" id="sec_run" open>
-  <summary>Génération</summary>
+  <summary>Vue d'ensemble</summary>
   <div class="row">
     <button class="ghost" onclick="window.location='/api/download'">
       Télécharger les diapos (.zip)</button>
+    <a class="link" href="/slideshow" target="_blank">slideshow →</a>
+    <a class="link" href="/today/" target="_blank">diapo du jour →</a>
+    <a class="link" href="/slideshow/portrait" target="_blank">
+      portrait →</a>
+  </div>
+  <div class="row" style="margin-top:12px">
     <span class="status" aria-live="polite" id="status">…</span>
+  </div>
+  <div class="dash">
+    <span class="chip" id="d_next"></span>
+    <span class="chip" id="d_ftp"></span>
+    <span class="chip" id="d_smb"></span>
+    <span class="chip" id="d_local"></span>
+    <span class="chip" id="d_series"></span>
   </div>
 </details>
 

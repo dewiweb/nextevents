@@ -81,6 +81,10 @@ details.card[open]>summary{margin-bottom:14px}
 .catgrid input[type=checkbox]{width:16px;height:16px;
  accent-color:#c99483}
 button.sm{padding:6px 14px;font-size:13px}
+.dash{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.chip{font-size:12.5px;padding:5px 12px;border-radius:20px;
+ border:1px solid #302f2e;color:#8f8c8a;white-space:nowrap}
+.chip.on{color:#efeae6;border-color:#4a4744}
 .hbadge{font-size:12.5px;padding:5px 12px;border-radius:20px;
  border:1px solid #302f2e;color:#8f8c8a;margin-left:auto;
  align-self:center;white-space:nowrap}
