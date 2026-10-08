@@ -1,5 +1,37 @@
 // Nextevents — logique de la page de contrôle (webui.html)
 
+// notifications et confirmations stylées — remplacent alert() et
+// confirm() natifs (bloquants, hors charte)
+function toast(msg, ok){
+  const t = document.createElement('div');
+  t.className = 'toast' + (ok === false ? ' err' : '');
+  t.textContent = msg;
+  document.getElementById('toasts').appendChild(t);
+  setTimeout(() => t.remove(), ok === false ? 6500 : 3500);
+}
+// confirmation modale → Promise<bool> (await-able, contrairement à
+// confirm() qui gèle tout l'onglet)
+function askConfirm(msg){
+  return new Promise(res => {
+    const box = document.getElementById('confirm_box');
+    const ok = document.getElementById('confirm_ok');
+    const no = document.getElementById('confirm_no');
+    document.getElementById('confirm_msg').textContent = msg;
+    box.style.display = 'flex';
+    const onkey = e => { if (e.key === 'Escape') done(false); };
+    const done = v => {
+      box.style.display = 'none';
+      ok.onclick = no.onclick = box.onclick = null;
+      document.removeEventListener('keydown', onkey);
+      res(v);
+    };
+    ok.onclick = () => done(true);
+    no.onclick = () => done(false);
+    box.onclick = e => { if (e.target === box) done(false); };
+    document.addEventListener('keydown', onkey);
+  });
+}
+
 // fetch → JSON uniforme : réseau coupé ou HTTP ≠ 2xx → throw ; un
 // {ok:false} métier reste à la charge de l'appelant (message dédié)
 async function api(url, opts = {}){
@@ -146,7 +178,7 @@ function addDetected(){
     ta.value = (ta.value.replace(/\s+$/, '') + '\n' +
                 lines.join('\n') + '\n').replace(/^\n/, '');
     dirty.add('series_map'); updSavebar();
-    refreshLogoTargets();
+    rowsFromMap();
   }
   closeDetect();
 }
@@ -156,49 +188,98 @@ function closeDetect(){
   document.getElementById('series_msg').textContent = '';
 }
 
-// Lignes « clé = Libellé | logo » du champ series_map → {i, key,
-// label, logo} — sert à peupler le select de cible du logo
+// ——— éditeur structuré des séries ———
+// Le textarea #series_map (format « slug = Libellé | logo ») reste la
+// valeur canonique — sauvegarde, dirty, refresh inchangés ; les lignes
+// ci-dessous sont sa surface d'édition principale.
 function seriesRows(){
   return document.getElementById('series_map').value.split('\n')
-    .map((l, i) => {
+    .map(l => {
       const t = l.trim();
       if (!t || t.startsWith('#') || !t.includes('=')) return null;
       const [k, rest] = [l.slice(0, l.indexOf('=')),
                          l.slice(l.indexOf('=') + 1)];
       const [label, logo] = [rest.split('|')[0].trim(),
                              (rest.split('|')[1] || '').trim()];
-      return {i, key: k.trim(), label, logo};
+      return {key: k.trim(), label, logo};
     }).filter(Boolean);
 }
-function refreshLogoTargets(){
-  const sel = document.getElementById('logo_target');
-  const cur = sel.value;
-  sel.innerHTML = '';
-  const rows = seriesRows();
-  if (!rows.length){
-    const o = document.createElement('option');
-    o.value = ''; o.textContent = '(déclarer une série ci-dessus)';
-    sel.appendChild(o); return;
-  }
-  rows.forEach(rw => {
-    const o = document.createElement('option');
-    o.value = rw.key;
-    o.textContent = rw.label + ' (' + rw.key + ')' +
-                    (rw.logo ? '  ◉' : '');
-    sel.appendChild(o);
-  });
-  if (cur && rows.some(rw => rw.key === cur)) sel.value = cur;
+function syncSeriesMap(){
+  // lignes → textarea : lignes entièrement vides ignorées ; les lignes
+  // non structurées du texte actuel (commentaires, lignes avancées
+  // sans '=') sont conservées en fin de bloc
+  const ta = document.getElementById('series_map');
+  const kept = ta.value.split('\n')
+    .map(l => l.trim())
+    .filter(t => t && (t.startsWith('#') || !t.includes('=')));
+  const lines = [...document.querySelectorAll('#series_rows .srow')]
+    .map(r => {
+      const k = r.querySelector('.skey').value.trim();
+      const l = r.querySelector('.slabel').value.trim();
+      const g = r.dataset.logo || '';
+      if (!k && !l) return null;
+      return k + ' = ' + l + (g ? ' | ' + g : '');
+    }).filter(Boolean);
+  ta.value = [...lines, ...kept].join('\n');
+  dirty.add('series_map'); updSavebar();
 }
+function renderRowLogo(row){
+  const b = row.querySelector('.slogo');
+  const g = row.dataset.logo || '';
+  b.textContent = g ? '◉ ' + g.split('/').pop() : 'logo…';
+  b.classList.toggle('has', !!g);
+  b.title = g ? g + ' — cliquer pour remplacer' : 'associer un logo';
+}
+let _logoRow = null;   // ligne ciblée par l'upload en cours
+function addSeriesRow(key='', label='', logo=''){
+  const row = document.createElement('div');
+  row.className = 'srow';
+  row.dataset.logo = logo || '';
+  const k = document.createElement('input');
+  k.className = 'skey'; k.value = key; k.placeholder = 'slug-ou-keyword';
+  const l = document.createElement('input');
+  l.className = 'slabel'; l.value = label; l.placeholder = 'Libellé affiché';
+  const g = document.createElement('button');
+  g.type = 'button'; g.className = 'ghost sm slogo';
+  g.onclick = () => {
+    if (!k.value.trim()){
+      document.getElementById('logo_up_msg').textContent =
+        'remplir d\'abord l\'identifiant de la série';
+      return;
+    }
+    _logoRow = row;
+    document.getElementById('logo_up').click();
+  };
+  const x = document.createElement('button');
+  x.type = 'button'; x.className = 'ghost sm sdel'; x.textContent = '×';
+  x.title = 'retirer la série';
+  x.onclick = () => { row.remove(); syncSeriesMap(); };
+  k.addEventListener('input', syncSeriesMap);
+  l.addEventListener('input', syncSeriesMap);
+  row.append(k, l, g, x);
+  document.getElementById('series_rows').appendChild(row);
+  renderRowLogo(row);
+}
+function rowsFromMap(){
+  // textarea → lignes (chargement des réglages, édition texte, ajouts
+  // détectés) — les lignes sont reconstruites entièrement
+  const box = document.getElementById('series_rows');
+  box.innerHTML = '';
+  seriesRows().forEach(rw => addSeriesRow(rw.key, rw.label, rw.logo));
+}
+// l'édition texte (détails replié) resynchronise les lignes au blur —
+// pas à chaque frappe, sinon le focus sauterait à la reconstruction
 document.getElementById('series_map')
-  .addEventListener('input', refreshLogoTargets);
+  .addEventListener('change', rowsFromMap);
 
 async function uploadLogo(inp){
   const f = inp.files[0]; inp.value = '';
   const msg = document.getElementById('logo_up_msg');
   if (!f) return;
-  const key = document.getElementById('logo_target').value;
-  if (!key){
-    msg.textContent = 'ajouter d\'abord la ligne de la série ci-dessus';
+  const row = _logoRow; _logoRow = null;
+  if (!row){
+    msg.textContent = 'aucune ligne ciblée — utiliser le bouton ' +
+      '« logo… » de la série';
     return;
   }
   msg.textContent = 'envoi…';
@@ -209,21 +290,13 @@ async function uploadLogo(inp){
       {method:'POST', body:fd})).json();
   } catch(e){ msg.textContent = 'échec : ' + e; return; }
   if (!r.ok){ msg.textContent = 'échec : ' + (r.error || '?'); return; }
-  // associe le logo à la ligne de la série choisie dans le select
-  const ta = document.getElementById('series_map');
-  const lines = ta.value.split('\n');
-  const row = seriesRows().find(rw => rw.key === key);
-  if (row){
-    lines[row.i] = row.key + ' = ' + row.label + ' | ' + r.name;
-    ta.value = lines.join('\n');
-    dirty.add('series_map'); updSavebar();
-    refreshLogoTargets();
-    document.getElementById('logo_target').value = key;
-    msg.textContent = r.name + ' associé à « ' + row.label + ' »';
-  } else {
-    msg.textContent = 'enregistré — ligne « ' + key +
-      ' » introuvable, ajouter « | ' + r.name + ' » à la main';
-  }
+  // le logo rejoint la ligne — le format texte est régénéré
+  row.dataset.logo = r.name;
+  renderRowLogo(row);
+  syncSeriesMap();
+  msg.textContent = r.name + ' associé à « ' +
+    (row.querySelector('.slabel').value ||
+     row.querySelector('.skey').value) + ' »';
 }
 
 function setVal(id, v){
@@ -252,7 +325,9 @@ async function refresh(){
   setCats(s.settings.gen_categories, s.categories || []);
   setVal('next_label', s.settings.next_label);
   setVal('series_map', s.settings.series_map);
-  refreshLogoTargets();
+  // les lignes suivent le textarea sauf si l'utilisateur édite —
+  // setVal n'a pas touché le champ dirty, les lignes non plus
+  if (!dirty.has('series_map')) rowsFromMap();
   setVal('specs_show', s.settings.specs_show);
   setVal('spec_drops', s.settings.spec_drops);
   setVal('spec_over', s.settings.spec_overrides);
@@ -403,21 +478,21 @@ document.addEventListener('click', async ev => {
     try {
       const r = await api(
         `/api/slides/${regen.dataset.regen}/regen`, {method:'POST'});
-      if (r.error) alert('Régénération : ' + r.error);
-    } catch(e){ alert('Régénération : ' + e); }
+      if (r.error) toast('Régénération : ' + r.error, false);
+    } catch(e){ toast('Régénération : ' + e, false); }
     refresh();
   } else if (del) {
-    if (!confirm(`Supprimer ${del.dataset.del} ?\n` +
-                 '(PNG + HTML, paysage et portrait — elle reviendra ' +
-                 'à la prochaine génération si l\'événement est ' +
-                 'toujours au programme)')) return;
+    if (!await askConfirm(`Supprimer ${del.dataset.del} ?\n` +
+        'PNG + HTML, paysage et portrait — elle reviendra à la ' +
+        'prochaine génération si l\'événement est toujours au ' +
+        'programme.')) return;
     del.disabled = true;
     let r;
     try {
       r = await api(`/api/slides/${del.dataset.del}`,
                     {method:'DELETE'});
     } catch(e){ r = {error: String(e)}; del.disabled = false; }
-    if (r.error) alert('Suppression : ' + r.error);
+    if (r.error) toast('Suppression : ' + r.error, false);
     refresh();
   }
 });
@@ -531,9 +606,20 @@ function addSpeaker(name, qual){
       onclick="this.parentNode.remove()">×</button>`;
   document.getElementById('t_speakers').appendChild(d);
 }
+// sélection précédente — à restaurer si l'utilisateur annule un
+// changement d'événement qui perdrait des retouches
+let _lastEvSel = '';
 async function prefillToday(){
-  const i = document.getElementById('t_ev').value;
-  if (i === '') return;
+  const sel = document.getElementById('t_ev');
+  const i = sel.value;
+  if (i === ''){ _lastEvSel = i; return; }
+  if ((previewDirty || srcDirty) &&
+      !await askConfirm('Des retouches ne sont pas enregistrées — ' +
+          'choisir un autre événement les abandonne. Continuer ?')){
+    sel.value = _lastEvSel;
+    return;
+  }
+  _lastEvSel = i;
   let e;
   try { e = await api('/api/today/event/'+i); }
   catch(err){ return; }          // index périmé après régénération
@@ -682,8 +768,8 @@ async function genToday(){
     previewDirty = false; srcDirty = false;
     document.getElementById('t_prev').dataset.loaded = '1';
     showTodayTools(true);
-    if (todaySrcMode) toggleTodaySrc();
-    setTodayFile('index');
+    if (todaySrcMode) await toggleTodaySrc();
+    await setTodayFile('index');
     refreshQrTab();
   }
 }
@@ -762,16 +848,17 @@ function showTodayTools(on){
 // today/ peut contenir deux diapos : index.html (diapo du jour) et
 // qr.html (slide série). Le sélecteur bascule l'aperçu/éditeur.
 let todayFile = 'index';
-function setTodayFile(f){
+async function setTodayFile(f){
   if (f !== todayFile && (previewDirty || srcDirty) &&
-      !confirm('Des retouches ne sont pas enregistrées — ' +
-               'changer de diapo les abandonne. Continuer ?')) return;
+      !await askConfirm('Des retouches ne sont pas enregistrées — ' +
+                        'changer de diapo les abandonne. Continuer ?'))
+    return;
   previewDirty = false; srcDirty = false;
   todayFile = f;
   document.getElementById('tf_index').classList.toggle('on', f==='index');
   document.getElementById('tf_qr').classList.toggle('on', f==='qr');
   document.getElementById('t_full').href = '/today/' + f + '.html';
-  if (todaySrcMode) toggleTodaySrc();
+  if (todaySrcMode) await toggleTodaySrc();
   loadTodayPreview();
 }
 function refreshQrTab(){
@@ -831,12 +918,13 @@ document.getElementById('t_html').addEventListener('input', () => {
 });
 document.getElementById('t_html').addEventListener('scroll', syncHl);
 let todaySrcMode = false;
-function toggleTodaySrc(){
+async function toggleTodaySrc(){
   // entrer en mode source remplace le textarea par un snapshot de
   // l'aperçu — des modifs non enregistrées seraient perdues
   if (!todaySrcMode && srcDirty &&
-      !confirm('La source a été modifiée sans être enregistrée — ' +
-               'la remplacer par le contenu de l\'aperçu ?')) return;
+      !await askConfirm('La source a été modifiée sans être ' +
+          'enregistrée — la remplacer par le contenu de l\'aperçu ?'))
+    return;
   todaySrcMode = !todaySrcMode;
   document.getElementById('t_prev').style.display =
     todaySrcMode ? 'none' : '';
@@ -903,8 +991,9 @@ async function saveTodayHtml(){
   }
 }
 async function delToday(){
-  if (!confirm('Retirer la diapo du jour ?\n(fichiers today/ supprimés ' +
-               'en local puis sur les partages à la synchro)')) return;
+  if (!await askConfirm('Retirer la diapo du jour ?\nLes fichiers ' +
+      'today/ sont supprimés en local puis sur les partages à la ' +
+      'synchro.')) return;
   const btn = document.getElementById('t_delbtn');
   btn.disabled = true;
   let r;
@@ -914,7 +1003,7 @@ async function delToday(){
   const el = document.getElementById('t_gen');
   el.textContent = r.ok ? 'retirée ✓' : 'retrait : ' + (r.error || '?');
   if (!r.ok) return;
-  if (todaySrcMode) toggleTodaySrc();  // ferme aussi le codebox
+  if (todaySrcMode) await toggleTodaySrc();  // ferme aussi le codebox
   previewDirty = false; srcDirty = false;
   const f = t_frame();
   f.removeAttribute('src'); f.removeAttribute('srcdoc');

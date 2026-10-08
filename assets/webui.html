@@ -93,25 +93,27 @@
           placeholder="autres slugs, virgules (optionnel)"></div>
       <label>Préfixe récurrents
         <input id="next_label" placeholder="Prochaine séance : "></label>
-      <label class="wide">Séries suivies (slug = Libellé [| logo],
-        par ligne)
-        <textarea id="series_map" rows="2"
-          placeholder="les-grands-temoins = Les grands témoins"></textarea>
-      </label>
-      <div class="wide" style="display:flex;align-items:center;gap:10px;
-        flex-wrap:wrap">
-        <button type="button" class="ghost sm" id="detectbtn"
-          onclick="detectSeries()">Détecter les séries…</button>
-        <label class="sub" style="display:flex;align-items:center;
-          gap:6px">logo pour
-          <select id="logo_target" style="max-width:220px"></select>
-        </label>
-        <button type="button" class="ghost sm"
-          onclick="logo_up.click()">Uploader un logo de série…</button>
+      <div class="wide">
+        <span class="lab">Séries suivies — une ligne par série :
+        identifiant (slug de page ou keyword OpenAgenda), libellé
+        affiché, logo optionnel</span>
+        <div id="series_rows"></div>
+        <div class="row" style="margin-top:10px">
+          <button type="button" class="ghost sm"
+            onclick="addSeriesRow()">+ série</button>
+          <button type="button" class="ghost sm" id="detectbtn"
+            onclick="detectSeries()">Détecter les séries…</button>
+          <span aria-live="polite" id="series_msg" class="sub"></span>
+          <span aria-live="polite" id="logo_up_msg" class="sub"></span>
+        </div>
         <input id="logo_up" type="file" accept="image/*" hidden
           onchange="uploadLogo(this)">
-        <span aria-live="polite" id="series_msg" class="sub"></span>
-        <span aria-live="polite" id="logo_up_msg" class="sub"></span>
+        <details class="adv">
+          <summary>édition texte — « slug = Libellé | logo »
+            par ligne</summary>
+          <textarea id="series_map" rows="3"
+            placeholder="les-grands-temoins = Les grands témoins"></textarea>
+        </details>
       </div>
       <div id="series_detect" class="catgrid wide" style="display:none">
       </div>
@@ -123,9 +125,9 @@
       </div>
       <div class="sub wide" style="margin:0">Catégories : slugs des pages
       <code>/au-programme/categorie/&lt;slug&gt;</code>.
-      Séries : le logo uploadé se référence par « | logos/fichier.png »
-      en fin de ligne — il remplace le rond de série sur la diapo du
-      jour (PNG ou SVG avec transparence conseillé).
+      Séries : le bouton ◉ d'une ligne associe un logo uploadé (PNG ou
+      SVG avec transparence conseillé) — il remplace le rond de série
+      sur la diapo du jour.
       OpenAgenda : données plus riches (horaires précis, accessibilité
       structurée) — la clé se crée sur openagenda.com ; la couleur des
       cartes reste lue sur le site, et tout échec OA retombe
@@ -409,5 +411,16 @@
 
 </div>
 
+<div id="toasts" aria-live="polite"></div>
+<div id="confirm_box" style="display:none" role="dialog"
+  aria-modal="true">
+  <div class="confirm">
+    <p id="confirm_msg"></p>
+    <div class="row">
+      <button id="confirm_ok">Confirmer</button>
+      <button class="ghost" id="confirm_no">Annuler</button>
+    </div>
+  </div>
+</div>
 <script src="/webui.js"></script>
 </body></html>
