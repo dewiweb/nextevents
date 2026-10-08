@@ -5,7 +5,7 @@
 <link rel="stylesheet" href="/webui.css"></head><body>
 <div style="display:flex;align-items:baseline;gap:16px;flex-wrap:wrap">
 <h1><span class="dot">●</span> Nextevents</h1>
-<span class="hbadge" id="hbadge">…</span>
+<span class="hbadge" aria-live="polite" id="hbadge">…</span>
 </div>
 <p class="sub">Diaporama OBS des événements des Champs Libres — PNG 16:9</p>
 
@@ -17,7 +17,7 @@
   <button data-tab="cfg">Réglages</button>
 </nav>
 <div class="actions">
-  <span class="status" id="saved" style="font-size:13px"></span>
+  <span class="status" aria-live="polite" id="saved" style="font-size:13px"></span>
   <button class="ghost" id="btn_save" onclick="save()">
     Enregistrer les réglages</button>
   <button id="btn_run" onclick="run()">Générer maintenant</button>
@@ -31,7 +31,7 @@
   <div class="row">
     <button class="ghost" onclick="window.location='/api/download'">
       Télécharger les diapos (.zip)</button>
-    <span class="status" id="status">…</span>
+    <span class="status" aria-live="polite" id="status">…</span>
   </div>
 </details>
 
@@ -97,8 +97,8 @@
           onclick="logo_up.click()">Uploader un logo de série…</button>
         <input id="logo_up" type="file" accept="image/*" hidden
           onchange="uploadLogo(this)">
-        <span id="series_msg" class="sub"></span>
-        <span id="logo_up_msg" class="sub"></span>
+        <span aria-live="polite" id="series_msg" class="sub"></span>
+        <span aria-live="polite" id="logo_up_msg" class="sub"></span>
       </div>
       <div id="series_detect" class="catgrid wide" style="display:none">
       </div>
@@ -178,7 +178,7 @@
   </div>
   <div class="row" style="margin-top:12px">
     <button class="ghost" id="ftp_testbtn" onclick="testFtp()">Tester la connexion</button>
-    <span class="status" id="ftptest"></span>
+    <span class="status" aria-live="polite" id="ftptest"></span>
   </div>
   <p class="sub" style="margin:10px 0 0">Laisser « Serveur FTP » vide pour
   désactiver l'envoi. Les diapos sont aussi écrites dans le dossier local.</p>
@@ -201,7 +201,7 @@
   </div>
   <div class="row" style="margin-top:12px">
     <button class="ghost" id="smb_testbtn" onclick="testSmb()">Tester la connexion</button>
-    <span class="status" id="smbtest"></span>
+    <span class="status" aria-live="polite" id="smbtest"></span>
   </div>
 </details>
 
@@ -234,7 +234,7 @@
       <select id="t_series_sel" style="width:220px">
         <option value="">— aucune —</option>
       </select></label>
-    <span class="status" id="t_series" style="color:#a8bce0"></span>
+    <span class="status" aria-live="polite" id="t_series" style="color:#a8bce0"></span>
   </div>
   <div class="row" style="align-items:flex-start;margin-top:14px">
     <div style="flex:1;min-width:400px;display:flex;flex-direction:column;
@@ -275,18 +275,18 @@
       flex-direction:column;gap:10px">
       <div class="row">
         <button id="t_genbtn" onclick="genToday()">
-          Générer la diapo du jour</button>
+          Générer et envoyer</button>
         <button class="ghost" id="t_savebtn" onclick="saveTodayHtml()"
-          style="display:none">Enregistrer les retouches</button>
-        <button class="ghost" id="t_delbtn" onclick="delToday()"
+          style="display:none">Enregistrer et envoyer</button>
+        <button class="ghost danger" id="t_delbtn" onclick="delToday()"
           style="display:none">Retirer</button>
         <button class="ghost" id="t_srcbtn" onclick="toggleTodaySrc()"
           style="display:none">Source HTML</button>
         <a class="link" id="t_full" href="/today/index.html"
           target="_blank" style="align-self:center;display:none">
           plein écran →</a>
-        <span class="status" id="t_gen"></span>
-        <span class="status" id="t_edit"></span>
+        <span class="status" aria-live="polite" id="t_gen"></span>
+        <span class="status" aria-live="polite" id="t_edit"></span>
       </div>
       <div id="t_files" style="display:none">
         <button class="on" id="tf_index" onclick="setTodayFile('index')">
@@ -327,6 +327,9 @@
         <button class="sw" data-color="#8f8c8a" title="Gris"
           style="background:#8f8c8a"></button>
       </div>
+      <p class="empty" id="t_empty">Choisir un événement (ou saisir un
+      titre) puis « Générer et envoyer » — l'aperçu éditable de la
+      diapo apparaîtra ici.</p>
       <div id="t_prev" style="display:none"><iframe id="t_frame"
         title="aperçu diapo du jour" loading="lazy"></iframe></div>
       <div class="codebox" id="t_codebox" style="display:none">
@@ -351,16 +354,17 @@
   <div class="row" style="margin-bottom:14px">
     <label>Slideshow — intervalle (s)
       <input id="ss_delay" type="number" min="2" step="1"
-        onchange="save()" style="width:80px"></label>
+        onchange="saveSlideshow()" style="width:80px"></label>
     <label>Transition
-      <select id="ss_transition" onchange="save()" style="width:auto">
+      <select id="ss_transition" onchange="saveSlideshow()"
+        style="width:auto">
         <option value="none">Aucune</option>
         <option value="fade">Fondu</option>
         <option value="slide">Glissement</option>
       </select></label>
     <label>Durée (ms)
       <input id="ss_tdur" type="number" min="0" step="100"
-        onchange="save()" style="width:90px"></label>
+        onchange="saveSlideshow()" style="width:90px"></label>
     <a class="link" href="/slideshow" target="_blank"
       style="align-self:end">ouvrir le slideshow →</a>
   </div>
@@ -372,16 +376,17 @@
   <div class="row" style="margin-bottom:14px">
     <label>Slideshow — intervalle (s)
       <input id="ss_delay_p" type="number" min="2" step="1"
-        onchange="save()" style="width:80px"></label>
+        onchange="saveSlideshow()" style="width:80px"></label>
     <label>Transition
-      <select id="ss_transition_p" onchange="save()" style="width:auto">
+      <select id="ss_transition_p" onchange="saveSlideshow()"
+        style="width:auto">
         <option value="none">Aucune</option>
         <option value="fade">Fondu</option>
         <option value="slide">Glissement</option>
       </select></label>
     <label>Durée (ms)
       <input id="ss_tdur_p" type="number" min="0" step="100"
-        onchange="save()" style="width:90px"></label>
+        onchange="saveSlideshow()" style="width:90px"></label>
     <a class="link" href="/slideshow/portrait" target="_blank"
       style="align-self:end">ouvrir le slideshow →</a>
   </div>

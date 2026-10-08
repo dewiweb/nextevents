@@ -47,9 +47,10 @@ function updSavebar(){
   b.textContent = dirty.size ? '● Enregistrer les réglages'
                              : 'Enregistrer les réglages';
 }
+// (les champs du diaporama — #tab_gal — s'auto-sauvent via
+// saveSlideshow : ils ne doivent pas allumer le bouton non plus)
 document.querySelectorAll(
-  '#tab_cfg input,#tab_cfg select,#tab_cfg textarea,' +
-  '#tab_gal input,#tab_gal select').forEach(el => {
+  '#tab_cfg input,#tab_cfg select,#tab_cfg textarea').forEach(el => {
   const mark = () => { dirty.add(el.id); updSavebar(); };
   el.addEventListener('input', mark);
   el.addEventListener('change', mark);
@@ -235,7 +236,7 @@ function setChecked(id, v){
   if (!el || dirty.has(id) || el === document.activeElement) return;
   el.checked = !!v;
 }
-let _gridSig = '', _logTxt = '';
+let _gridSig = '', _logTxt = '', _wasRunning = false;
 async function refresh(){
   let s;
   try { s = await api('/api/status'); }
@@ -283,6 +284,11 @@ async function refresh(){
   setVal('ss_delay_p', s.settings.ss_delay_p);
   setVal('ss_transition_p', s.settings.ss_transition_p);
   setVal('ss_tdur_p', s.settings.ss_tdur_p);
+  // le journal s'ouvre au lancement d'une génération (l'utilisateur
+  // peut toujours le refermer — on ne force qu'au front montant)
+  if (s.running && !_wasRunning)
+    document.getElementById('sec_log').open = true;
+  _wasRunning = s.running;
   const el = document.getElementById('status');
   const last = s.last_run ? new Date(s.last_run*1000).toLocaleString('fr-FR') : 'jamais';
   const hb = document.getElementById('hbadge');
@@ -324,7 +330,9 @@ async function refresh(){
          <button data-del="${n}" title="Supprimer la diapo">✕</button>
        </div></div>`;
     document.getElementById('grid').innerHTML =
-      s.slides.map(n => cell(n, '')).join('');
+      s.slides.map(n => cell(n, '')).join('') ||
+      '<p class="empty">Aucune diapo — lancez ' +
+      '« Générer maintenant » pour scraper le programme.</p>';
     document.getElementById('card_p').style.display =
       sp.length ? '' : 'none';
     document.getElementById('grid_p').innerHTML =
@@ -463,7 +471,10 @@ async function loadTodayEvents(){
     ? (sel.options[sel.selectedIndex].dataset.k || '') : '';
   sel.innerHTML = '';
   const ph = document.createElement('option');
-  ph.value = ''; ph.textContent = '— choisir un événement —';
+  ph.value = '';
+  ph.textContent = todayEvents.length
+    ? '— choisir un événement —'
+    : '— aucun événement (lancez une génération) —';
   sel.appendChild(ph);
   const groups = [
     ['Aujourd\u2019hui', todayEvents.filter(e => evIsToday(e.date))],
@@ -717,6 +728,8 @@ function showTodayTools(on){
   // en mode source l'aperçu reste caché même si le refresh réaffiche
   // la boîte à outils
   p.style.display = on && !todaySrcMode ? '' : 'none';
+  document.getElementById('t_empty').style.display =
+    on ? 'none' : '';
   if (on){
     if (!p.dataset.loaded){
       p.dataset.loaded = '1';
@@ -881,6 +894,7 @@ async function delToday(){
   const el = document.getElementById('t_gen');
   el.textContent = r.ok ? 'retirée ✓' : 'retrait : ' + (r.error || '?');
   if (!r.ok) return;
+  if (todaySrcMode) toggleTodaySrc();  // ferme aussi le codebox
   previewDirty = false; srcDirty = false;
   const f = t_frame();
   f.removeAttribute('src'); f.removeAttribute('srcdoc');
@@ -892,6 +906,11 @@ async function delToday(){
   showTodayTools(false);
   refreshQrTab();
 }
+function flashSaved(ok, err){
+  const el = document.getElementById('saved');
+  el.textContent = ok ? 'enregistré ✓' : 'échec : ' + (err || '?');
+  setTimeout(()=>el.textContent='',2500);
+}
 // champ numérique vide → undefined → la clé n'est pas envoyée et le
 // serveur garde l'ancienne valeur (évite d'écraser par 0/NaN)
 const num = id => {
@@ -899,7 +918,6 @@ const num = id => {
   return v === '' ? undefined : +v;
 };
 async function save(){
-  const el = document.getElementById('saved');
   let r;
   try {
     r = await api('/api/settings',{method:'POST', body:{
@@ -933,9 +951,22 @@ async function save(){
   } catch(e){ r = {error: String(e)}; }
   const ok = r && r.ok !== false && !r.error;
   if (ok){ dirty.clear(); updSavebar(); }
-  el.textContent = ok ? 'enregistré ✓' : 'échec : ' + (r.error || '?');
-  setTimeout(()=>el.textContent='',2500);
+  flashSaved(ok, r.error);
   return ok;
+}
+// les 6 réglages du player s'enregistrent seuls au change — SANS
+// committer les autres champs dirty (un series_map à moitié saisi ne
+// doit pas partir avec l'intervalle du slideshow)
+async function saveSlideshow(){
+  try {
+    await api('/api/settings',{method:'POST', body:{
+      ss_delay:num('ss_delay'), ss_transition:ss_transition.value,
+      ss_tdur:num('ss_tdur'),
+      ss_delay_p:num('ss_delay_p'),
+      ss_transition_p:ss_transition_p.value,
+      ss_tdur_p:num('ss_tdur_p')}});
+    flashSaved(true);
+  } catch(e){ flashSaved(false, e); }
 }
 async function testFtp(){
   if (!await save()) return;   // réglages non enregistrés : pas de test

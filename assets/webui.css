@@ -18,6 +18,10 @@ button{background:#bf4c3c;color:#fff;border:0;border-radius:8px;
  padding:10px 22px;font:inherit;font-weight:500;cursor:pointer}
 button:disabled{opacity:.45;cursor:default}
 button.ghost{background:#302f2e}
+button.danger{color:#c99483;border:1px solid #4a3532}
+button.danger:hover{background:#6b3a2e;color:#efeae6}
+.empty{color:#8f8c8a;font-size:14px;padding:18px;border:1px dashed #302f2e;
+ border-radius:10px;margin:0}
 .status{font-size:14px}
 .status.ok{color:#9daa9f}.status.err{color:#c99483}
 .status.run{color:#f6e3bb}
@@ -56,7 +60,7 @@ details.card[open]>summary{margin-bottom:14px}
 .cell{position:relative}
 .cell .acts{position:absolute;top:6px;right:6px;display:flex;gap:4px;
  opacity:.4;transition:opacity .15s}
-.cell:hover .acts{opacity:1}
+.cell:hover .acts,.cell:focus-within .acts{opacity:1}
 .fset{border:1px solid #302f2e;border-radius:10px;padding:14px 16px;
  margin-top:14px}
 .fset>h4{font-size:11.5px;text-transform:uppercase;letter-spacing:.08em;
