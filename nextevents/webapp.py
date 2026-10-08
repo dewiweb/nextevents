@@ -103,6 +103,33 @@ def api_run():
     return jsonify(ok=True)
 
 
+def _safe_local_path(v):
+    """Chemin local de réglage plausible : absolu (posix, UNC ou
+    lettre de lecteur Windows), sans segment « .. » — la synchro
+    miroir supprime des fichiers dans ces dossiers, un chemin échappé
+    serait destructeur."""
+    import re
+    v = (v or "").strip()
+    if not v:
+        return ""
+    if ".." in [p for p in re.split(r"[/\\]+", v) if p]:
+        return None
+    if v.startswith(("/", "\\", "~")) or re.match(
+            r"^[a-zA-Z]:[/\\]", v):
+        return v
+    return None
+
+
+def _safe_remote_path(v):
+    """Chemin distant (FTP/SMB) : relatif, sans segment « .. » — la
+    synchro miroir navigue et supprime sous ce préfixe."""
+    import re
+    v = (v or "").strip().strip("/\\")
+    if ".." in [p for p in re.split(r"[/\\]+", v) if p]:
+        return None
+    return v
+
+
 @app.post("/api/settings")
 def api_settings():
     body = request.get_json(force=True, silent=True) or {}
@@ -113,6 +140,16 @@ def api_settings():
         if k in ("ftp_pass", "smb_pass", "oa_api_key") and body[k] == "":
             continue  # vide = inchangé
         if k == "resolution" and body[k] not in _slide.SIZES:
+            continue
+        if k in ("out_dir", "local_dir"):
+            v = _safe_local_path(body[k])
+            if v is not None:
+                s[k] = v
+            continue
+        if k in ("ftp_path", "smb_path"):
+            v = _safe_remote_path(body[k])
+            if v is not None:
+                s[k] = v
             continue
         if isinstance(d, int):
             try:

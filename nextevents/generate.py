@@ -18,7 +18,17 @@ from .settings import parse_kv
 from .slide import (
     DESIGNS, render_all, slide_html, slide_names, SIZES, DEFAULT_SIZE,
 )
-from .sync import sync_ftp, sync_local, sync_smb
+from .sync import push_all
+
+
+def _png_ok(png, size):
+    """Le PNG existe et a les dimensions attendues — un fichier
+    corrompu (rendu interrompu, disque plein) est re-rendu, jamais
+    fatale pour le reste du jeu."""
+    try:
+        return Image.open(png).size == size
+    except Exception:
+        return False
 
 
 def _render_set(events, fonts, dest, size, orientation="landscape"):
@@ -41,10 +51,14 @@ def _render_set(events, fonts, dest, size, orientation="landscape"):
             pp.exists()
             and hp.exists()
             and hp.read_text("utf-8") == content
-            and Image.open(pp).size == size
+            and _png_ok(pp, size)
         ):
             continue
         hp.write_text(content, encoding="utf-8")
+        # le PNG existant ne correspond plus au HTML : le retirer pour
+        # ne pas publier une diapo périmée si le rendu échoue
+        if pp.exists():
+            pp.unlink()
         to_render.append((hp, pp))
 
     for p in dest.glob("*.png"):
@@ -241,15 +255,11 @@ def generate(out_dir=None, max_events=0, pages=99, cfg=None, size=DEFAULT_SIZE):
         _render_set(events, fonts, out / "portrait", psize, "portrait")
 
     if cfg:
-        if cfg.get("ftp_host"):
-            print("6/6 Envoi FTP…")
-            sync_ftp(out, cfg)
-        if cfg.get("smb_host"):
-            print("    Envoi SMB…")
-            sync_smb(out, cfg)
-        if cfg.get("local_dir"):
-            print("    Copie dossier local…")
-            sync_local(out, cfg)
+        print("6/6 Synchronisation…")
+        # push_all isole les erreurs par destination : une panne FTP
+        # n'empêche pas le push SMB/local vers les écrans
+        for err in push_all(out, cfg):
+            print(f"  ! synchro : {err}")
 
     n = len(pngs) + len(list((out / "portrait").glob("*.png")))
     print(f"\nTerminé : {n} diapos dans {out}/")

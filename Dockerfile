@@ -2,6 +2,12 @@ FROM python:3.12-slim-bookworm
 
 WORKDIR /app
 
+# zoneinfo : requis pour le scheduler (TZ) et les dates OpenAgenda —
+# absent de python:*-slim
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends tzdata \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt \
     && playwright install --with-deps chromium

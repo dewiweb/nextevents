@@ -146,26 +146,32 @@ def today_html(data, fonts):
     )
 
 
+_IMG_EXTS = {".png", ".svg", ".jpg", ".jpeg", ".webp", ".gif"}
+
+
 def _img_uri(path_str):
     """Fichier image → data URI. Les chemins relatifs sont résolus
     depuis le dossier de sortie configuré, son parent, puis les assets
-    et la racine du projet."""
+    et la racine du projet — et le fichier doit rester dans l'une de
+    ces racines : le chemin vient du réglage series_map, rien ne
+    justifie de lire un fichier arbitraire (| /etc/…)."""
+    from .paths import ROOT
+    from .settings import resolve_out_dir
+    out = resolve_out_dir()
+    roots = tuple(b.resolve()
+                  for b in (out, out.parent, ASSET_DIR, ROOT))
     p = Path(path_str).expanduser()
-    if not p.is_absolute():
-        from .paths import ROOT
-        from .settings import resolve_out_dir
-        out = resolve_out_dir()
-        for base in (out, out.parent, ASSET_DIR, ROOT):
-            cand = base / p
-            if cand.is_file():
-                p = cand
-                break
-    if not p.is_file():
-        return None
-    import mimetypes
-    mime = mimetypes.guess_type(p.name)[0] or "image/png"
-    return ("data:" + mime + ";base64,"
-            + base64.b64encode(p.read_bytes()).decode())
+    cands = [p] if p.is_absolute() else [b / p for b in roots]
+    for cand in cands:
+        if cand.suffix.lower() not in _IMG_EXTS or not cand.is_file():
+            continue
+        cand = cand.resolve()
+        if any(cand.is_relative_to(b) for b in roots):
+            import mimetypes
+            mime = mimetypes.guess_type(cand.name)[0] or "image/png"
+            return ("data:" + mime + ";base64,"
+                    + base64.b64encode(cand.read_bytes()).decode())
+    return None
 
 
 _SERIES_URL_CACHE = {}
@@ -240,6 +246,10 @@ def write_today(data, out_dir=None):
     dest = d / "index.html"
     series = (data.get("series") or "").strip()
     bg = data.get("bg") or ("#16203f" if series else "#141414")
+    if not re.fullmatch(r"#[0-9a-fA-F]{6}", bg):
+        # le fond vient du POST et atterrit dans le CSS des deux
+        # templates — hex strict ou repli (même règle que today_html)
+        bg = "#16203f" if series else "#141414"
     fonts = ensure_fonts()
     dest.write_text(today_html(data, fonts), encoding="utf-8")
     if series:

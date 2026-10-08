@@ -14,6 +14,11 @@ bp = Blueprint("slides", __name__)
 
 @bp.get("/slides/<path:name>")
 def slide_file(name):
+    """Sert les artefacts publiés (diapos, HTML, manifeste) —
+    rien d'autre : settings.json (identifiants), events.json et les
+    caches vivent dans le même dossier sans être exposés."""
+    if Path(name).suffix.lower() not in (".png", ".html", ".txt"):
+        return "type de fichier non servi", 403
     return send_from_directory(resolve_out_dir(), name)
 
 
