@@ -14,7 +14,7 @@ from .scrape import (
     site_card_index, site_detail_enrich, series_event_ids_for, SERIES,
     _unique_series_rows,
 )
-from .settings import parse_kv
+from .settings import atomic_write, parse_kv
 from .slide import (
     DESIGNS, render_all, slide_html, slide_names, SIZES, DEFAULT_SIZE,
 )
@@ -54,7 +54,7 @@ def _render_set(events, fonts, dest, size, orientation="landscape"):
             and _png_ok(pp, size)
         ):
             continue
-        hp.write_text(content, encoding="utf-8")
+        atomic_write(hp, content)
         # le PNG existant ne correspond plus au HTML : le retirer pour
         # ne pas publier une diapo périmée si le rendu échoue
         if pp.exists():
@@ -77,9 +77,9 @@ def _render_set(events, fonts, dest, size, orientation="landscape"):
     pngs = sorted(dest.glob("*.png"))
 
     # manifeste du jeu attendu — uploadé en dernier par les synchros
-    (dest / "manifest.txt").write_text(
-        "\n".join(p.name for p in pngs) + "\n", encoding="utf-8"
-    )
+    atomic_write(
+        dest / "manifest.txt",
+        "\n".join(p.name for p in pngs) + "\n")
     return pngs
 
 
@@ -212,7 +212,8 @@ def generate(out_dir=None, max_events=0, pages=99, cfg=None, size=DEFAULT_SIZE):
     # slide_names : la webui n'a pas à le recalculer par index
     import json
     out.mkdir(parents=True, exist_ok=True)
-    (out / "events.json").write_text(
+    atomic_write(
+        out / "events.json",
         json.dumps(
             [
                 {
@@ -234,7 +235,6 @@ def generate(out_dir=None, max_events=0, pages=99, cfg=None, size=DEFAULT_SIZE):
             ],
             ensure_ascii=False, indent=1,
         ),
-        encoding="utf-8",
     )
 
     print("3/5 Fontes…")

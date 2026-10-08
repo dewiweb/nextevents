@@ -129,14 +129,16 @@ async function poll() {
   try {
     const r = await (await fetch(
       '/api/slide-list?layout=' + layout)).json();
-    delay = qDelay || r.delay || 8;
+    // ?? et non || : un réglage 0 explicite doit être respecté
+    delay = qDelay || (r.delay ?? 8);
     trans = qTrans || r.transition || 'fade';
-    dur = qTdur || r.tdur || 1500;
+    dur = qTdur || (r.tdur ?? 1500);
     const changed = JSON.stringify(r.slides) !== JSON.stringify(slides);
+    const curName = idx >= 0 ? slides[idx] : null;
     slides = r.slides;
     document.getElementById('empty').style.display =
       slides.length ? 'none' : 'grid';
-    if (changed && (!slides.length || !slides.includes(slides[idx]))) {
+    if (changed && (!slides.length || !slides.includes(curName))) {
       // diapo courante supprimée : repartir proprement
       idx = -1;
       next();

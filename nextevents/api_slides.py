@@ -7,7 +7,7 @@ from pathlib import Path
 from flask import Blueprint, jsonify, request, send_from_directory
 
 from . import slide as _slide
-from .settings import load_settings, resolve_out_dir
+from .settings import atomic_write, load_settings, resolve_out_dir
 
 bp = Blueprint("slides", __name__)
 
@@ -37,9 +37,9 @@ def _rewrite_manifests():
     out = resolve_out_dir()
     for d in (out, out / "portrait"):
         if d.exists():
-            (d / "manifest.txt").write_text(
-                "\n".join(p.name for p in sorted(d.glob("*.png"))) + "\n",
-                encoding="utf-8")
+            atomic_write(
+                d / "manifest.txt",
+                "\n".join(p.name for p in sorted(d.glob("*.png"))) + "\n")
 
 
 def _drop_from_events_json(name):
@@ -59,8 +59,8 @@ def _drop_from_events_json(name):
             if (e.get("slide") or _slide.slide_name(e, i + 1))
             != Path(name).stem]
     if len(kept) < len(events):
-        meta.write_text(json.dumps(kept, ensure_ascii=False, indent=2),
-                        encoding="utf-8")
+        atomic_write(meta, json.dumps(kept, ensure_ascii=False,
+                                      indent=2))
 
 
 def _resync():
@@ -137,7 +137,7 @@ def api_slide_list():
     s = load_settings()
     return jsonify(
         slides=names,
-        delay=s.get(f"ss_delay{sfx}") or 8,
+        delay=s.get(f"ss_delay{sfx}") if s.get(f"ss_delay{sfx}") is not None else 8,
         transition=s.get(f"ss_transition{sfx}") or "fade",
-        tdur=s.get(f"ss_tdur{sfx}") or 1500,
+        tdur=s.get(f"ss_tdur{sfx}") if s.get(f"ss_tdur{sfx}") is not None else 1500,
     )

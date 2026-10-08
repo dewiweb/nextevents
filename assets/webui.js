@@ -1,5 +1,20 @@
 // Nextevents — logique de la page de contrôle (webui.html)
 
+// fetch → JSON uniforme : réseau coupé ou HTTP ≠ 2xx → throw ; un
+// {ok:false} métier reste à la charge de l'appelant (message dédié)
+async function api(url, opts = {}){
+  const init = {method: opts.method || 'GET'};
+  if (opts.body !== undefined){
+    init.method = opts.method || 'POST';
+    init.headers = {'Content-Type':'application/json'};
+    init.body = typeof opts.body === 'string'
+      ? opts.body : JSON.stringify(opts.body);
+  }
+  const r = await fetch(url, init);
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  return r.json();
+}
+
 // onglets — panneau actif persisté en localStorage
 document.querySelectorAll('.tabs button').forEach(b => {
   b.addEventListener('click', () => {
@@ -89,11 +104,15 @@ async function detectSeries(){
   const acts = document.getElementById('series_detect_acts');
   const msg = document.getElementById('series_msg');
   box.style.display = 'none'; acts.style.display = 'none';
+  const btn = document.getElementById('detectbtn');
+  btn.disabled = true;
   msg.textContent = 'détection en cours — ~1 min (pages du site + OpenAgenda)…';
   let r;
   try {
-    r = await (await fetch('/api/series/detect', {method:'POST'})).json();
-  } catch(e){ msg.textContent = 'échec : ' + e; return; }
+    r = await api('/api/series/detect', {method:'POST'});
+  } catch(e){ msg.textContent = 'échec : ' + e;
+    btn.disabled = false; return; }
+  btn.disabled = false;
   if (!r.ok){ msg.textContent = 'échec : ' + (r.error || '?'); return; }
   const ta = document.getElementById('series_map');
   const known = new Set(
@@ -216,8 +235,11 @@ function setChecked(id, v){
   if (!el || dirty.has(id) || el === document.activeElement) return;
   el.checked = !!v;
 }
+let _gridSig = '', _logTxt = '';
 async function refresh(){
-  const s = await (await fetch('/api/status')).json();
+  let s;
+  try { s = await api('/api/status'); }
+  catch(e){ return; }  // serveur coupé : on réessaiera au prochain tick
   setVal('interval', s.settings.interval_min);
   setVal('sched_times', s.settings.sched_times);
   setVal('maxev', s.settings.max_events);
@@ -276,26 +298,40 @@ async function refresh(){
   document.getElementById('btn_run').disabled = s.running;
   document.getElementById('btn_run').textContent =
     s.running ? '⏳ génération…' : 'Générer maintenant';
-  document.getElementById('log').textContent = s.log.join('\n') || '—';
+  const logTxt = s.log.join('\n') || '—';
+  if (logTxt !== _logTxt){
+    _logTxt = logTxt;
+    document.getElementById('log').textContent = logTxt;
+  }
   const esc = t => t.replace(/&/g,'&amp;').replace(/</g,'&lt;')
                     .replace(/>/g,'&gt;');
   const meta = s.slide_meta || {};
-  const cell = (n, sub) =>
-    `<div class="cell"><a href="/slides/${sub||''}${n}" target="_blank">
-      <img loading="lazy" src="/slides/${sub||''}${n}"></a>
-     <div class="caption" title="${n}">${esc(meta[n] || prettyName(n))}</div>
-     <div class="acts">
-       <button data-regen="${n}"
-         title="Re-rendre le PNG depuis le HTML">↻</button>
-       <button data-del="${n}" title="Supprimer la diapo">✕</button>
-     </div></div>`;
-  document.getElementById('grid').innerHTML =
-    s.slides.map(n => cell(n, '')).join('');
+  // la galerie n'est reconstruite que quand la liste change — sinon le
+  // refresh de 3 s recrée les boutons ↻ en plein clic (double regen)
   const sp = s.slides_portrait || [];
-  document.getElementById('card_p').style.display =
-    sp.length ? '' : 'none';
-  document.getElementById('grid_p').innerHTML =
-    sp.map(n => cell(n, 'portrait/')).join('');
+  const gridSig = JSON.stringify(s.slides) + '|' +
+    JSON.stringify(sp) + '|' + JSON.stringify(meta);
+  if (gridSig !== _gridSig){
+    const first = !_gridSig;
+    _gridSig = gridSig;
+    const cell = (n, sub) =>
+      `<div class="cell"><a href="/slides/${sub||''}${n}" target="_blank">
+        <img loading="lazy" src="/slides/${sub||''}${n}"></a>
+       <div class="caption" title="${n}">${esc(meta[n] || prettyName(n))}</div>
+       <div class="acts">
+         <button data-regen="${n}"
+           title="Re-rendre le PNG depuis le HTML">↻</button>
+         <button data-del="${n}" title="Supprimer la diapo">✕</button>
+       </div></div>`;
+    document.getElementById('grid').innerHTML =
+      s.slides.map(n => cell(n, '')).join('');
+    document.getElementById('card_p').style.display =
+      sp.length ? '' : 'none';
+    document.getElementById('grid_p').innerHTML =
+      sp.map(n => cell(n, 'portrait/')).join('');
+    // la liste des événements reflète la dernière génération
+    if (!first) todayEvents = [];
+  }
   // tant qu'aucun événement n'a été chargé on réessaie à chaque
   // refresh — sinon la liste restait vide après la 1re génération
   // (le <option> placeholder faisait passer options.length à 1)
@@ -325,7 +361,10 @@ function prettyName(n){
   if (!m) return n;
   return `${m[2]}/${m[1]} · ${m[3]}h${m[4]} · ${m[5].replace(/-/g,' ')}`;
 }
-async function run(){ await fetch('/api/run',{method:'POST'}); refresh(); }
+async function run(){
+  try { await api('/api/run',{method:'POST'}); } catch(e){}
+  refresh();
+}
 
 // actions galerie (délégation — les boutons sont recréés au refresh)
 document.addEventListener('click', async ev => {
@@ -333,18 +372,23 @@ document.addEventListener('click', async ev => {
   const del = ev.target.closest('[data-del]');
   if (regen) {
     regen.disabled = true; regen.textContent = '…';
-    const r = await (await fetch(
-      `/api/slides/${regen.dataset.regen}/regen`,
-      {method:'POST'})).json();
-    if (r.error) alert('Régénération : ' + r.error);
+    try {
+      const r = await api(
+        `/api/slides/${regen.dataset.regen}/regen`, {method:'POST'});
+      if (r.error) alert('Régénération : ' + r.error);
+    } catch(e){ alert('Régénération : ' + e); }
     refresh();
   } else if (del) {
     if (!confirm(`Supprimer ${del.dataset.del} ?\n` +
                  '(PNG + HTML, paysage et portrait — elle reviendra ' +
                  'à la prochaine génération si l\'événement est ' +
                  'toujours au programme)')) return;
-    const r = await (await fetch(
-      `/api/slides/${del.dataset.del}`, {method:'DELETE'})).json();
+    del.disabled = true;
+    let r;
+    try {
+      r = await api(`/api/slides/${del.dataset.del}`,
+                    {method:'DELETE'});
+    } catch(e){ r = {error: String(e)}; del.disabled = false; }
     if (r.error) alert('Suppression : ' + r.error);
     refresh();
   }
@@ -410,7 +454,7 @@ function evIsToday(d){
 }
 async function loadTodayEvents(){
   try {
-    todayEvents = await (await fetch('/api/today/events')).json();
+    todayEvents = await api('/api/today/events');
   } catch(e){ return; }
   const sel = document.getElementById('t_ev');
   // restauration par identité (date|titre), pas par index : une
@@ -459,7 +503,10 @@ function addSpeaker(name, qual){
 async function prefillToday(){
   const i = document.getElementById('t_ev').value;
   if (i === '') return;
-  const e = await (await fetch('/api/today/event/'+i)).json();
+  let e;
+  try { e = await api('/api/today/event/'+i); }
+  catch(err){ return; }          // index périmé après régénération
+  if (e.error) return;
   // la série de l'événement l'emporte sur le choix manuel
   if (e.series) document.getElementById('t_series_sel').value = '';
   refreshSeriesBadge();
@@ -523,6 +570,8 @@ function liveTodayPreview(){
   clearTimeout(_prevTimer);
   _prevTimer = setTimeout(async () => {
     if (todaySrcMode) return;
+    // une génération est en cours : l'aperçu n'écrase pas son statut
+    if (document.getElementById('t_genbtn').disabled) return;
     if (previewDirty){
       document.getElementById('t_gen').textContent =
         'aperçu : retouches en cours — « Enregistrer les retouches » ' +
@@ -531,10 +580,13 @@ function liveTodayPreview(){
     }
     const d = collectToday();
     if (!d.title.trim()) return;
-    const r = await (await fetch('/api/today/preview',{method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify(d)})).json();
+    let r;
+    try {
+      r = await api('/api/today/preview',{method:'POST', body:d});
+    } catch(e){ return; }
     if (!r.ok) return;
+    // la génération a pu démarrer pendant le fetch
+    if (document.getElementById('t_genbtn').disabled) return;
     const f = t_frame();
     if (r.html === f.dataset.lastHtml) return;  // pas de reload si identique
     f.dataset.lastHtml = r.html;
@@ -581,13 +633,15 @@ async function genToday(){
   const btn = document.getElementById('t_genbtn');
   const el = document.getElementById('t_gen');
   btn.disabled = true;
+  // un aperçu debouncé ne doit pas réafficher « non envoyée » après
+  // une génération réussie
+  clearTimeout(_prevTimer);
   el.textContent = 'génération…';
   let r;
   try {
-    r = await (await fetch('/api/today',{method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify(collectToday())})).json();
-  } finally {
+    r = await api('/api/today',{method:'POST', body:collectToday()});
+  } catch(e){ r = {error: String(e)}; }
+  finally {
     btn.disabled = false;
   }
   el.textContent = r.ok ? 'générée ✓ envoyée sur les partages'
@@ -660,7 +714,9 @@ function showTodayTools(on){
     document.getElementById(id).style.display =
       on && !(id === 't_fmt' && todaySrcMode) ? '' : 'none');
   const p = document.getElementById('t_prev');
-  p.style.display = on ? '' : 'none';
+  // en mode source l'aperçu reste caché même si le refresh réaffiche
+  // la boîte à outils
+  p.style.display = on && !todaySrcMode ? '' : 'none';
   if (on){
     if (!p.dataset.loaded){
       p.dataset.loaded = '1';
@@ -707,7 +763,7 @@ function loadTodayPreview(){
   f.removeAttribute('srcdoc');   // srcdoc primerait sur src sinon
   f.src = '/today/' + todayFile + '.html?t=' + Date.now();
   // recharge aussi la source pour rester sync si on bascule
-  fetch('/api/today/html?f=' + todayFile).then(r => r.json()).then(j => {
+  api('/api/today/html?f=' + todayFile).then(j => {
     if (j.ok){
       document.getElementById('t_html').value = j.html;
       srcDirty = false;
@@ -764,6 +820,8 @@ function toggleTodaySrc(){
       d.body && d.body.removeAttribute('contenteditable');
       document.getElementById('t_html').value =
         '<!DOCTYPE html>\n' + d.documentElement.outerHTML;
+      // l'aperçu redevient éditable à la sortie du mode source
+      d.body && (d.body.contentEditable = 'true');
     }
     srcDirty = false;
     syncHl();
@@ -776,7 +834,9 @@ function toggleTodaySrc(){
 }
 async function saveTodayHtml(){
   const el = document.getElementById('t_edit');
+  const btn = document.getElementById('t_savebtn');
   el.textContent = 'enregistrement…';
+  btn.disabled = true;
   let h;
   if (todaySrcMode){
     h = document.getElementById('t_html').value;
@@ -784,14 +844,21 @@ async function saveTodayHtml(){
     const d = t_frame().contentDocument;
     if (!d || !d.documentElement){
       el.textContent = 'aperçu vide — génère d\'abord la diapo';
+      btn.disabled = false;
       return;
     }
     d.body && d.body.removeAttribute('contenteditable');
     h = '<!DOCTYPE html>\n' + d.documentElement.outerHTML;
+    // sérialiser sans contenteditable ne doit pas désactiver
+    // l'édition dans l'aperçu affiché
+    d.body && (d.body.contentEditable = 'true');
   }
-  const r = await (await fetch('/api/today/html?f=' + todayFile,
-    {method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({html:h})})).json();
+  let r;
+  try {
+    r = await api('/api/today/html?f=' + todayFile,
+      {method:'POST', body:{html:h}});
+  } catch(e){ r = {error: String(e)}; }
+  finally { btn.disabled = false; }
   el.textContent = r.ok ? 'enregistré ✓ PNG re-rendu, envoyé'
     : 'enregistrement : '+(r.errors||[r.error||'erreur']).join(' ; ');
   if (r.ok){
@@ -805,25 +872,39 @@ async function saveTodayHtml(){
 async function delToday(){
   if (!confirm('Retirer la diapo du jour ?\n(fichiers today/ supprimés ' +
                'en local puis sur les partages à la synchro)')) return;
-  const r = await (await fetch('/api/today', {method:'DELETE'})).json();
+  const btn = document.getElementById('t_delbtn');
+  btn.disabled = true;
+  let r;
+  try { r = await api('/api/today', {method:'DELETE'}); }
+  catch(e){ r = {error: String(e)}; }
+  finally { btn.disabled = false; }
   const el = document.getElementById('t_gen');
   el.textContent = r.ok ? 'retirée ✓' : 'retrait : ' + (r.error || '?');
   if (!r.ok) return;
   previewDirty = false; srcDirty = false;
   const f = t_frame();
   f.removeAttribute('src'); f.removeAttribute('srcdoc');
+  // sinon un futur live-preview au HTML identique serait sauté
+  delete f.dataset.lastHtml;
   todayFile = 'index';
   document.getElementById('tf_index').classList.add('on');
   document.getElementById('tf_qr').classList.remove('on');
   showTodayTools(false);
   refreshQrTab();
 }
+// champ numérique vide → undefined → la clé n'est pas envoyée et le
+// serveur garde l'ancienne valeur (évite d'écraser par 0/NaN)
+const num = id => {
+  const v = document.getElementById(id).value.trim();
+  return v === '' ? undefined : +v;
+};
 async function save(){
-  await fetch('/api/settings',{method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({
-      interval_min:+interval.value, sched_times:sched_times.value,
-      max_events:+maxev.value,
+  const el = document.getElementById('saved');
+  let r;
+  try {
+    r = await api('/api/settings',{method:'POST', body:{
+      interval_min:num('interval'), sched_times:sched_times.value,
+      max_events:num('maxev'),
       data_source:data_source.value, oa_agenda:oa_agenda.value,
       oa_api_key:oa_api_key.value,
       gen_categories:gen_categories.value,
@@ -832,7 +913,7 @@ async function save(){
       spec_overrides:spec_over.value,
       resolution:res.value,
       gen_landscape:gen_ls.checked?1:0, gen_portrait:gen_pt.checked?1:0,
-      ftp_host:ftp_host.value, ftp_port:+ftp_port.value,
+      ftp_host:ftp_host.value, ftp_port:num('ftp_port'),
       ftp_path:ftp_path.value, ftp_user:ftp_user.value,
       ftp_pass:ftp_pass.value, ftp_tls:ftp_tls.checked?1:0,
       ftp_send_landscape:ftp_ls.checked?1:0,
@@ -844,27 +925,40 @@ async function save(){
       smb_send_portrait:smb_pt.checked?1:0,
       out_dir:out_dir.value,
       local_dir:local_dir.value,
-      ss_delay:+ss_delay.value, ss_transition:ss_transition.value,
-      ss_tdur:+ss_tdur.value,
-      ss_delay_p:+ss_delay_p.value,
+      ss_delay:num('ss_delay'), ss_transition:ss_transition.value,
+      ss_tdur:num('ss_tdur'),
+      ss_delay_p:num('ss_delay_p'),
       ss_transition_p:ss_transition_p.value,
-      ss_tdur_p:+ss_tdur_p.value})});
-  dirty.clear(); updSavebar();
-  document.getElementById('saved').textContent = 'enregistré ✓';
-  setTimeout(()=>document.getElementById('saved').textContent='',2000);
+      ss_tdur_p:num('ss_tdur_p')}});
+  } catch(e){ r = {error: String(e)}; }
+  const ok = r && r.ok !== false && !r.error;
+  if (ok){ dirty.clear(); updSavebar(); }
+  el.textContent = ok ? 'enregistré ✓' : 'échec : ' + (r.error || '?');
+  setTimeout(()=>el.textContent='',2500);
+  return ok;
 }
 async function testFtp(){
-  await save();
+  if (!await save()) return;   // réglages non enregistrés : pas de test
+  const btn = document.getElementById('ftp_testbtn');
   const el = document.getElementById('ftptest');
+  btn.disabled = true;
   el.textContent = 'test…';
-  const r = await (await fetch('/api/ftp/test',{method:'POST'})).json();
+  let r;
+  try { r = await api('/api/ftp/test',{method:'POST'}); }
+  catch(e){ r = {error: String(e)}; }
+  finally { btn.disabled = false; }
   el.textContent = r.ok ? 'connexion OK ✓' : 'échec : '+r.error;
 }
 async function testSmb(){
-  await save();
+  if (!await save()) return;
+  const btn = document.getElementById('smb_testbtn');
   const el = document.getElementById('smbtest');
+  btn.disabled = true;
   el.textContent = 'test…';
-  const r = await (await fetch('/api/smb/test',{method:'POST'})).json();
+  let r;
+  try { r = await api('/api/smb/test',{method:'POST'}); }
+  catch(e){ r = {error: String(e)}; }
+  finally { btn.disabled = false; }
   el.textContent = r.ok ? 'connexion OK ✓' : 'échec : '+r.error;
 }
 refresh(); setInterval(refresh, 3000);

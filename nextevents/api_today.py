@@ -3,7 +3,7 @@
 from flask import Blueprint, jsonify, request, send_from_directory
 
 from . import slide as _slide
-from .settings import load_settings, resolve_out_dir
+from .settings import atomic_write, load_settings, resolve_out_dir
 from .webutil import events_meta
 
 bp = Blueprint("today", __name__)
@@ -60,6 +60,7 @@ def api_today_events():
             "i": i, "title": e["title"], "tag": e.get("tag"),
             "date": e.get("specs", {}).get("Date", ""),
             "lieu": e.get("specs", {}).get("Lieu", ""),
+            "color": e.get("color"),
             "series": e.get("series", ""),
         }
         for i, e in enumerate(events_meta())
@@ -138,7 +139,7 @@ def api_today_delete():
     for p in d.iterdir():
         if p.is_file():
             p.unlink()
-    (d / "manifest.txt").write_text("", encoding="utf-8")
+    atomic_write(d / "manifest.txt", "")
     s = load_settings()
 
     def _rs():
@@ -183,7 +184,7 @@ def api_today_html_save():
         return jsonify(
             ok=False,
             errors=["générer d'abord la diapo depuis les champs"]), 400
-    (d / fname).write_text(h, encoding="utf-8")
+    atomic_write(d / fname, h)
     errors = []
     try:
         render_today_png(_slide.SIZES.get(

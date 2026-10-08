@@ -70,7 +70,8 @@ def openagenda_image(uid):
                     m = {}
                 m[uid] = url
                 OA_MAP_FILE.parent.mkdir(parents=True, exist_ok=True)
-                OA_MAP_FILE.write_text(json.dumps(m, indent=0))
+                from .settings import atomic_write
+                atomic_write(OA_MAP_FILE, json.dumps(m, indent=0))
             return url
     except Exception as e:
         print(f"  ! openagenda {uid} : {e}")

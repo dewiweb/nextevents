@@ -57,10 +57,33 @@ state = {"running": False, "last_run": None, "last_error": None, "log": []}
 lock = threading.Lock()
 
 
+def atomic_write(path, text):
+    """Écriture atomique tmp + rename — un crash en cours d'écriture ne
+    laisse pas un JSON tronqué que la prochaine lecture avalerait en
+    silence (perte des réglages et des identifiants). Le tmp est unique
+    par appel : deux écritures concurrentes ne s'entrelacent pas
+    (dernière remplacée gagne — jamais de fichier à moitié écrit)."""
+    import tempfile
+
+    path = Path(path)
+    fd, tmp = tempfile.mkstemp(
+        dir=path.parent, prefix=path.name + ".", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+        os.replace(tmp, path)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
+
+
 def load_settings():
     try:
         s = json.loads(SETTINGS_FILE.read_text())
-    except Exception:
+    except FileNotFoundError:
+        s = {}
+    except Exception as e:
+        print(f"  ! settings.json illisible ({e}) — réglages par défaut")
         s = {}
     out = dict(DEFAULTS)
     for k, d in DEFAULTS.items():
@@ -96,7 +119,7 @@ def save_settings(s):
     payload = dict(s)
     if state["last_run"]:
         payload["last_run"] = state["last_run"]
-    SETTINGS_FILE.write_text(json.dumps(payload, indent=2))
+    atomic_write(SETTINGS_FILE, json.dumps(payload, indent=2))
 
 
 DEFAULT_NEXT_LABEL = "Prochaine séance : "

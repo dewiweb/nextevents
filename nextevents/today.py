@@ -12,7 +12,7 @@ from string import Template
 
 from .media import ensure_fonts
 from .paths import ASSET_DIR
-from .settings import OUT_DIR
+from .settings import OUT_DIR, atomic_write
 from .scrape import BASE, CARD_COLORS
 
 _TEMPLATE = None
@@ -251,12 +251,11 @@ def write_today(data, out_dir=None):
         # templates — hex strict ou repli (même règle que today_html)
         bg = "#16203f" if series else "#141414"
     fonts = ensure_fonts()
-    dest.write_text(today_html(data, fonts), encoding="utf-8")
+    atomic_write(dest, today_html(data, fonts))
     if series:
         from .settings import load_settings
         smap = (load_settings() or {}).get("series_map", "")
-        (d / "qr.html").write_text(
-            qr_html(series, bg, fonts, smap), encoding="utf-8")
+        atomic_write(d / "qr.html", qr_html(series, bg, fonts, smap))
     else:
         # pas de série : pas de slide QR — on supprime les restes d'une
         # éventuelle génération précédente
@@ -286,7 +285,7 @@ def render_today_png(size, out_dir=None):
     # manifeste du jeu — les synchros le poussent en dernier comme
     # marqueur d'intégrité, comme pour le diaporama principal
     d = out / "today"
-    (d / "manifest.txt").write_text(
-        "\n".join(p.name for p in sorted(d.glob("*.png"))) + "\n",
-        encoding="utf-8")
+    atomic_write(
+        d / "manifest.txt",
+        "\n".join(p.name for p in sorted(d.glob("*.png"))) + "\n")
     return png

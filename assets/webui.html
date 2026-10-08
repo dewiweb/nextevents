@@ -87,7 +87,7 @@
       </label>
       <div class="wide" style="display:flex;align-items:center;gap:10px;
         flex-wrap:wrap">
-        <button type="button" class="ghost sm"
+        <button type="button" class="ghost sm" id="detectbtn"
           onclick="detectSeries()">Détecter les séries…</button>
         <label class="sub" style="display:flex;align-items:center;
           gap:6px">logo pour
@@ -177,7 +177,7 @@
       style="width:auto"> Envoyer portrait</label>
   </div>
   <div class="row" style="margin-top:12px">
-    <button class="ghost" onclick="testFtp()">Tester la connexion</button>
+    <button class="ghost" id="ftp_testbtn" onclick="testFtp()">Tester la connexion</button>
     <span class="status" id="ftptest"></span>
   </div>
   <p class="sub" style="margin:10px 0 0">Laisser « Serveur FTP » vide pour
@@ -200,7 +200,7 @@
       style="width:auto"> Envoyer portrait</label>
   </div>
   <div class="row" style="margin-top:12px">
-    <button class="ghost" onclick="testSmb()">Tester la connexion</button>
+    <button class="ghost" id="smb_testbtn" onclick="testSmb()">Tester la connexion</button>
     <span class="status" id="smbtest"></span>
   </div>
 </details>
