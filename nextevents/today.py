@@ -276,10 +276,15 @@ def render_today_png(size, out_dir=None):
     out = Path(out_dir) if out_dir else OUT_DIR
     src = out / "today" / "index.html"
     png = out / "today" / "index.png"
-    jobs = [(src, png)]
     qr_src = out / "today" / "qr.html"
+    qr_png = out / "today" / "qr.png"
+    # supprimer les PNG avant le rendu : si le screenshot échoue, un
+    # PNG périmé ne doit pas être poussé avec le HTML frais
+    png.unlink(missing_ok=True)
+    qr_png.unlink(missing_ok=True)
+    jobs = [(src, png)]
     if qr_src.exists():
-        jobs.append((qr_src, out / "today" / "qr.png"))
+        jobs.append((qr_src, qr_png))
     list(render_all(jobs, size=size))
     if not png.exists():
         raise RuntimeError("rendu de la diapo du jour impossible")

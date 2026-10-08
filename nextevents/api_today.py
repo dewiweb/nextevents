@@ -18,16 +18,12 @@ def _today_data(body):
         "tag": str(body.get("tag") or "").strip(),
         "color": body.get("color") or None,
         "bg": str(body.get("bg") or "").strip(),
-        "specs": {
-            "Date": str(body.get("date") or "").strip(),
-            "Lieu": str(body.get("lieu") or "").strip(),
-        },
         "speakers": [
             {
                 "name": str(s.get("name") or "").strip(),
                 "quality": str(s.get("quality") or "").strip(),
             }
-            for s in body.get("speakers", [])
+            for s in body.get("speakers") or []
             if isinstance(s, dict) and s.get("name")
         ],
         "moderator": str(body.get("moderator") or "").strip(),

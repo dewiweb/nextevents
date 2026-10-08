@@ -442,12 +442,19 @@ async function refresh(){
   // séries connues (series_map + tables par défaut) pour le choix
   // manuel quand l'événement n'est pas dans la liste
   const ssel = document.getElementById('t_series_sel');
-  if (ssel && ssel.options.length <= 1 && s.series_options){
-    (s.series_options).forEach(l => {
+  // reconstruit si les séries suivies ont changé (réglages modifiés
+  // entre deux refresh) — la sélection courante est préservée
+  const sig = JSON.stringify(s.series_options || []);
+  if (ssel && sig !== ssel.dataset.sig){
+    ssel.dataset.sig = sig;
+    const cur = ssel.value;
+    ssel.innerHTML = '<option value="">— aucune —</option>';
+    (s.series_options || []).forEach(l => {
       const o = document.createElement('option');
       o.value = l; o.textContent = l;
       ssel.appendChild(o);
     });
+    if (cur) ssel.value = cur;
   }
   // l'aperçu reste si un live-preview srcdoc est affiché, même quand
   // index.html n'existe pas encore sur le disque
@@ -535,25 +542,24 @@ function refreshSeriesBadge(){
     s ? 'Série : '+s+' — modèle com appliqué' : '';
 }
 let todayEvents = [];
-// « JJ/MM/AA » du jour (format du spec Date du site)
-function todayShort(){
-  const t = new Date();
-  return String(t.getDate()).padStart(2,'0') + '/' +
-    String(t.getMonth()+1).padStart(2,'0') + '/' +
-    String(t.getFullYear()).slice(2);
-}
-function evIsToday(d){
+// position d'un événement par rapport à aujourd'hui, d'après le spec
+// Date « JJ/MM/AA … » ou « Du JJ/MM/AA au JJ/MM/AA » → today|up|past
+function evDay(d){
   d = d || '';
-  const m = d.match(/(\d{2})\/(\d{2})\/(\d{2})\s*au\s*(\d{2})\/(\d{2})\/(\d{2})/);
-  if (m){  // « Du JJ/MM/AA au JJ/MM/AA » : en cours si aujourd'hui dedans
-    const a = `20${m[3]}-${m[2]}-${m[1]}`, b = `20${m[6]}-${m[5]}-${m[4]}`;
-    const t = new Date();
-    const iso = t.getFullYear() + '-' +
-      String(t.getMonth()+1).padStart(2,'0') + '-' +
-      String(t.getDate()).padStart(2,'0');
-    return a <= iso && iso <= b;
+  const t = new Date();
+  const iso = t.getFullYear() + '-' +
+    String(t.getMonth()+1).padStart(2,'0') + '-' +
+    String(t.getDate()).padStart(2,'0');
+  const r = d.match(
+    /(\d{2})\/(\d{2})\/(\d{2})\s*au\s*(\d{2})\/(\d{2})\/(\d{2})/);
+  if (r){
+    const a = `20${r[3]}-${r[2]}-${r[1]}`, b = `20${r[6]}-${r[5]}-${r[4]}`;
+    return a <= iso && iso <= b ? 'today' : iso < a ? 'up' : 'past';
   }
-  return d.includes(todayShort());
+  const m = d.match(/(\d{2})\/(\d{2})\/(\d{2})/);
+  if (!m) return 'up';
+  const a = `20${m[3]}-${m[2]}-${m[1]}`;
+  return a === iso ? 'today' : a > iso ? 'up' : 'past';
 }
 async function loadTodayEvents(){
   try {
@@ -572,8 +578,9 @@ async function loadTodayEvents(){
     : '— aucun événement (lancez une génération) —';
   sel.appendChild(ph);
   const groups = [
-    ['Aujourd\u2019hui', todayEvents.filter(e => evIsToday(e.date))],
-    ['À venir', todayEvents.filter(e => !evIsToday(e.date))],
+    ['Aujourd\u2019hui', todayEvents.filter(e => evDay(e.date) === 'today')],
+    ['À venir', todayEvents.filter(e => evDay(e.date) === 'up')],
+    ['Passés', todayEvents.filter(e => evDay(e.date) === 'past')],
   ];
   for (const [label, evs] of groups){
     if (!evs.length) continue;
@@ -593,15 +600,21 @@ async function loadTodayEvents(){
     const m = [...sel.options].find(o => o.dataset.k === prevKey);
     sel.value = m ? m.value : '';
   }
+  // sélection restaurée : le badge série reflète le choix d'emblée
+  refreshSeriesBadge();
 }
+// échappement pour interpolation dans innerHTML (attribut entre
+// guillemets) — les données viennent du scraping, pas de confiance
+const _escAttr = s => String(s).replace(/&/g,'&amp;')
+  .replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 function addSpeaker(name, qual){
   const d = document.createElement('div');
   d.className = 'row';
   d.innerHTML =
     `<input class="spk_name" placeholder="Nom Prénom" style="width:230px"
-      value="${name.replace(/"/g,'&quot;')}">
+      value="${_escAttr(name)}">
      <input class="spk_qual" placeholder="Qualité (fonction, affiliation…)"
-      style="flex:1" value="${qual.replace(/"/g,'&quot;')}">
+      style="flex:1" value="${_escAttr(qual)}">
      <button class="ghost" style="padding:6px 12px"
       onclick="this.parentNode.remove()">×</button>`;
   document.getElementById('t_speakers').appendChild(d);
@@ -634,7 +647,7 @@ async function prefillToday(){
   // nouvel événement = nouvelle session d'édition : l'aperçu repart
   // des champs, d'éventuelles retouches d'une diapo précédente ne
   // bloquent plus le live-preview
-  previewDirty = false;
+  previewDirty = false; srcDirty = false;
   document.getElementById('t_title').value = e.title || '';
   document.getElementById('t_sub').value = '';
   document.getElementById('t_mod').value = e.moderator || '';
@@ -673,6 +686,9 @@ let previewDirty = false, srcDirty = false;
 function armPreviewEdit(){
   const d = t_frame().contentDocument;
   if (d && d.body){
+    // sans styleWithCSS, Chromium produit <font>/<b> présentationnels
+    // au lieu de styles inline — HTML sauvegardé sale
+    try { d.execCommand('styleWithCSS', false, true); } catch(e){}
     d.body.contentEditable = 'true';
     d.body.addEventListener('input', () => {
       previewDirty = true;
