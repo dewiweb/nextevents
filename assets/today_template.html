@@ -53,16 +53,20 @@ h1{font-size:80px;font-weight:500;line-height:1.08;letter-spacing:-.01em;
 .rule{height:3px;background:$accent;border-radius:2px;margin-top:44px;
  width:180px}
 .spacer{flex:1 1 0;min-height:0}
-.middle{flex:2;display:flex;flex-direction:column;align-items:center;
- justify-content:center;min-height:0}
+/* la zone intervenants se dimensionne sur son contenu (flex:2 0 auto)
+   plutôt que sur une part fixe du reste — le spacer au-dessus cède sa
+   place si les noms en demandent, et se remplit si la zone est vide */
+.middle{flex:2 0 auto;display:flex;flex-direction:column;
+ align-items:center;justify-content:center;min-height:0}
 .spk-label{font-size:26px;font-weight:500;
  letter-spacing:.14em;text-transform:uppercase;color:$muted}
-.speakers{margin-top:26px;display:flex;flex-direction:column;gap:32px;
- align-items:center;min-height:0;overflow:hidden}
+.speakers{margin-top:26px;display:flex;flex-direction:column;
+ gap:${spk_gap}px;align-items:center;min-height:0;overflow:hidden}
 .speaker{display:flex;flex-direction:column;gap:2px;align-items:center}
-.speaker .name{font-size:54px;font-weight:500}
-.speaker .qual{font-size:32px;line-height:1.3;color:$muted;
- max-width:1400px}
+.speaker .name{font-size:${spk_name}px;font-weight:500}
+.speaker .qual{font-size:${spk_qual}px;line-height:1.3;color:$muted;
+ max-width:1400px;display:-webkit-box;-webkit-line-clamp:${spk_clamp};
+ -webkit-box-orient:vertical;overflow:hidden}
 .mod{margin-top:auto;padding-top:34px;font-size:34px;color:$faint;
  border-top:1px solid rgba(239,234,230,.12);width:100%}
 .mod-line b{font-weight:500;color:$light}
@@ -80,7 +84,7 @@ h1{font-size:80px;font-weight:500;line-height:1.08;letter-spacing:-.01em;
    autres diapos — le cercle déborde visuellement dans la zone vide */
 .gt-name{font-size:${gt_size}px;font-weight:500;line-height:1.14;
  text-transform:uppercase;letter-spacing:.02em;padding:0 22px;
- overflow-wrap:break-word}
+ max-width:100%;overflow-wrap:break-word}
 .gt-logo{color:rgba(255,255,255,.85);display:flex}
 .gt-logo svg{height:32px;width:auto}
 /* logo de série configuré (« slug = Libellé | logo.png ») : remplace

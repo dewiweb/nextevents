@@ -120,6 +120,16 @@ def today_html(data, fonts):
         for ln in (data.get("subtitle") or "").splitlines()
         if ln.strip())
     n = len(title)
+    # intervenants : la zone .middle est bornée — sans taille
+    # dégressive, des noms en surnombre sont tronqués par
+    # l'overflow caché ; on réduit plutôt que couper
+    nspk = sum(1 for s in data.get("speakers", []) if s.get("name"))
+    # nom de série : le mot le plus long doit tenir dans les ~206px
+    # utiles du rond (un glyphe majuscule ≈ 0,62× la taille de fonte)
+    # — un keyword d'un seul tenant (« FETEDELASCIENCE ») débordait
+    words = (series or "").split()
+    longest = max([len(w) for w in words] or [0])
+    fit = int(206 / (0.62 * max(longest, 1)))
     return _template().substitute(
         font_regular=fonts["regular"],
         font_medium=fonts["medium"],
@@ -131,13 +141,23 @@ def today_html(data, fonts):
         variant=" gt" if series else "",
         badge_html=badge_html,
         h1_size=80 if n < 42 else 64 if n < 80 else 52,
-        # nom de série : taille dégressive pour tenir dans le rond
-        # 250px (≈200px utiles) — le gabarit « Les grands témoins »
-        # reste à 36px
-        gt_size=(36 if len(series or "") <= 20
-                 else 30 if len(series or "") <= 30
-                 else 22 if len(series or "") <= 44
-                 else 18 if len(series or "") <= 60 else 15),
+        # taille dégressive : gabarit « Les grands témoins » à 36px,
+        # bornée par le mot le plus long
+        gt_size=min(
+            (36 if len(series or "") <= 20
+             else 30 if len(series or "") <= 30
+             else 22 if len(series or "") <= 44
+             else 18 if len(series or "") <= 60 else 15),
+            fit),
+        spk_name=54 if nspk <= 2 else 44 if nspk == 3
+                 else 36 if nspk == 4 else 30,
+        spk_gap=32 if nspk <= 2 else 22 if nspk == 3
+                else 14 if nspk == 4 else 10,
+        spk_qual=32 if nspk <= 2 else 28 if nspk == 3
+                 else 24 if nspk == 4 else 20,
+        # qualité bornée à 2 lignes jusqu'à 3 intervenants, 1 au-delà —
+        # sinon le bloc peut toujours dépasser la hauteur de carte
+        spk_clamp=2 if nspk <= 3 else 1,
         title=title_esc,
         subtitle_html=sub_html,
         speakers_label="Avec" if speakers_html else "",
