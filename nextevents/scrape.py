@@ -174,7 +174,7 @@ def site_detail_enrich(url, title=None, series_tbl=None):
     except Exception:
         return {}
     out = {}
-    series = series_from_soup(soup, series_tbl or SERIES)
+    series = series_from_soup(soup, series_tbl or SERIES, url=url)
     if series:
         out["series"] = series
     banner = soup.select_one(".v-banner")
@@ -374,7 +374,8 @@ def parse_detail(ev, series_tbl=None):
     # d'une série suivie (series_map ou SERIES) — présent sur une
     # partie seulement des pages, mark_series complète via la page
     # série pour les autres
-    series = series_from_soup(soup, series_tbl or SERIES)
+    series = series_from_soup(soup, series_tbl or SERIES,
+                              url=ev.get("url"))
     if series:
         ev["series"] = series
 
@@ -503,21 +504,37 @@ def _series_label_for(ident, table):
     return table.get(m, m) if m is not None else None
 
 
-def series_from_soup(soup, table):
-    """Libellé de série détecté sur une page détail : lien « En savoir
-    plus » vers /au-programme/<slug> (hors catégories et événements),
-    sinon <h2> portant le nom d'une série suivie. Recherche limitée au
-    contenu principal pour ne pas capter un lien de navigation."""
+def series_from_soup(soup, table, url=None):
+    """Libellé de série détecté sur une page détail.
+
+    Signaux par ordre de fiabilité :
+    1. lien « En savoir plus » (bouton c-button) vers la page série —
+       les liens v-event__link des blocs « Les autres … » pointent des
+       séries/événements voisins et ne doivent pas être captés ;
+    2. le slug de la page elle-même — une expo comme « Jardins
+       d'hiver » vit directement sur la page série ;
+    3. <h2> du contenu propre de la page (.s-richtext) portant le nom
+       d'une série suivie — les h2 des sections voisines (« Dans le
+       Mag », « Les autres … ») vivent dans v-events__content."""
     scope = soup.select_one("main") or soup
     for a in scope.select('a[href*="/au-programme/"]'):
         h = a.get("href") or ""
         if "/categorie/" in h or re.search(r"/\d+", h):
             continue
+        txt = " ".join(a.get_text().split()).lower()
+        if "c-button" not in (a.get("class") or []) \
+                and "en savoir plus" not in txt:
+            continue
         lbl = _series_label_for(
             h.rstrip("/").rsplit("/", 1)[-1], table)
         if lbl:
             return lbl
-    for h2 in scope.select("h2"):
+    if url:
+        slug = re.sub(r"/\d+/?$", "", url.rstrip("/")).rsplit("/", 1)[-1]
+        lbl = _series_label_for(slug, table)
+        if lbl:
+            return lbl
+    for h2 in scope.select(".s-richtext h2"):
         lbl = _series_label_for(" ".join(h2.get_text().split()), table)
         if lbl:
             return lbl
