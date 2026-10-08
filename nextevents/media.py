@@ -131,6 +131,54 @@ def round_logo(src, dst=None, size=512):
     return dst
 
 
+def _img_mime(data, fallback="image/jpeg"):
+    """Mime déduit des octets — le Content-Type déclaré ou l'extension
+    de l'URL peuvent mentir (et le cache ne stocke pas le mime)."""
+    if data.startswith(b"\x89PNG"):
+        return "image/png"
+    if data.startswith(b"\xff\xd8"):
+        return "image/jpeg"
+    if data.startswith(b"GIF8"):
+        return "image/gif"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    if data.lstrip()[:200].lower().startswith(b"<svg") or \
+            b"<svg" in data[:200].lower():
+        return "image/svg+xml"
+    return fallback
+
+
+def _safe_img_url(u):
+    """Filtre les URLs d'image venues du scraping/OA : http(s) uniquement
+    (pas de file://, gopher…), et refus des IP littérales privées —
+    limite simple contre un SSRF local. Un nom d'hôte résolvant vers
+    une IP privée n'est pas bloqué (pas de résolution DNS ici)."""
+    import ipaddress
+    try:
+        p = urlsplit(u)
+    except Exception:
+        return None
+    if p.scheme not in ("http", "https") or not p.hostname:
+        return None
+    try:
+        ip = ipaddress.ip_address(p.hostname)
+        if ip.is_private or ip.is_loopback or ip.is_link_local:
+            return None
+    except ValueError:
+        pass   # nom d'hôte : OK
+    return u
+
+
+def _img_cache_path(u):
+    """Fichier cache de l'URL — hash du chemin complet : deux URLs
+    différentes au même basename ne se mangent plus l'une l'autre."""
+    import hashlib
+    name = Path(urlsplit(u).path).name or "image"
+    h = hashlib.sha1(u.encode()).hexdigest()[:10]
+    stem, dot, ext = name.rpartition(".")
+    return CACHE_DIR / f"{stem or name}-{h}{dot}{ext}"
+
+
 def download_image(ev):
     """Télécharge l'image et la retourne en data URI (HTML autonome).
     Cache local : les URLs d'images sont versionnées, on ne retélécharge
@@ -141,18 +189,18 @@ def download_image(ev):
     # puis repli sur l'image du site si son téléchargement échoue
     urls = ([openagenda_image(uid.group(1))] if uid else []) + [url]
     for u in urls:
+        u = _safe_img_url(u) if u else None
         if not u:
             continue
-        cache = CACHE_DIR / Path(urlsplit(u).path).name
+        cache = _img_cache_path(u)
         try:
             if cache.exists():
-                data, mime = cache.read_bytes(), "image/jpeg"
+                data = cache.read_bytes()
             else:
-                r = get(u)
-                data = r.content
-                mime = r.headers.get("Content-Type", "image/jpeg").split(";")[0]
+                data = get(u).content
                 cache.parent.mkdir(parents=True, exist_ok=True)
                 cache.write_bytes(data)
+            mime = _img_mime(data)
             ev["img_data"] = f"data:{mime};base64,{base64.b64encode(data).decode()}"
             return ev
         except Exception as e:

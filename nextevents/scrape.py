@@ -4,8 +4,12 @@ import datetime
 import re
 from urllib.parse import urljoin
 
+import threading
+
 import requests
 from bs4 import BeautifulSoup
+
+from .series import norm_series, series_match, slugify
 
 BASE = "https://www.leschampslibres.fr"
 UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 nextevents/1.0"
@@ -59,12 +63,18 @@ SPRITE_LABELS["calendar"] = "Date"
 SPEC_ORDER = ["Date", "Séances", "Durée", "Lieu", "Tarif", "Public",
               "Accessibilité"]
 
-session = requests.Session()
-session.headers["User-Agent"] = UA
+# une Session par thread — requests.Session n'est pas sûre en
+# partage entre workers (parse_detail / download_image tournent en
+# ThreadPoolExecutor) : état et redirections pourraient se mélanger
+_tls = threading.local()
 
 
 def get(url, **kw):
-    r = session.get(url, timeout=30, **kw)
+    s = getattr(_tls, "session", None)
+    if s is None:
+        s = _tls.session = requests.Session()
+        s.headers["User-Agent"] = UA
+    r = s.get(url, timeout=30, **kw)
     r.raise_for_status()
     return r
 
@@ -82,7 +92,7 @@ def _color_from_classes(classes, prefix):
 def parse_card(card):
     """Extrait les infos d'une carte .v-event de la liste."""
     link = card.select_one("a.v-event__link")
-    if not link:
+    if not link or not link.get("href"):
         return None
     img = card.select_one("img.v-event__picture")
     tag = card.select_one(".c-tag__label")
@@ -253,7 +263,13 @@ def list_events(max_pages=99, categories=None):
         page = 1
         while page <= max_pages:
             url = list_url if page == 1 else f"{list_url}?page={page}"
-            soup = BeautifulSoup(get(url).text, "lxml")
+            try:
+                soup = BeautifulSoup(get(url).text, "lxml")
+            except Exception as e:
+                # une catégorie KO (404, timeout) ne doit pas emporter
+                # les autres — on passe à la suivante
+                print(f"  ! {cat_label} p{page} KO : {e}")
+                break
             cards = soup.select("div.v-event")
             if not cards:
                 break
@@ -455,67 +471,36 @@ def series_tables(text):
     ]
 
 
-def _norm_series(s):
-    """minuscules, sans accents ni séparateurs — tolère « Grandstemoins »
-    vs « grandstemoins » ou « Les grands témoins »."""
-    import unicodedata
-    s = unicodedata.normalize("NFD", s or "")
-    return "".join(c for c in s
-                   if not unicodedata.combining(c) and c.isalnum()).lower()
-
-
 def series_brand(text, series):
     """Résout (libellé canonique, logo) pour une série détectée —
     events.json peut contenir un libellé d'une ancienne config ou le
     keyword brut (« Grandstemoins ») : on matche clé et libellé de
-    series_map (normalisés), puis les tableaux par défaut site/OA.
+    series_map (normalisés, même règle que series_match), puis les
+    tableaux par défaut site/OA.
     Renvoie (None, None) si la série n'est dans aucun tableau —
     l'appelant garde alors la valeur brute."""
-    s = _norm_series(series)
-    if not s:
+    if not norm_series(series):
         return "", None
     for rows in series_tables(text):
         for k, l, g in rows:
-            nk, nl = _norm_series(k), _norm_series(l)
-            if s == nl or s == nk or s in nk or nk in s:
+            if series_match(series, (k, l)):
                 return l, g
     return None, None
 
 
 def _series_key_for(ident, table):
     """Clé de la table correspondant à un identifiant — mêmes règles
-    normalisées que _series_label_for, sur les clés uniquement."""
-    h = _norm_series(ident)
-    if not h:
-        return None
-    for k in table:
-        if _norm_series(k) == h:
-            return k
-    for k in table:
-        nk = _norm_series(k)
-        if len(nk) >= 4 and len(h) >= 4 and (nk in h or h in nk):
-            return k
-    return None
+    que series_match, sur les clés uniquement."""
+    return series_match(ident, table.keys())
 
 
 def _series_label_for(ident, table):
     """Libellé de la table correspondant à un identifiant de série —
-    le même nom sous des formes différentes se rejoint après
-    normalisation (slug de page « fete-de-la-science » ≡ keyword OA
-    « fetedelascience » ≡ libellé « Fête de la science »). Égalité
-    d'abord, puis sous-chaîne ≥4 (« nosfuturs » ⊂ « nosfuturs2027 »)."""
-    h = _norm_series(ident)
-    if not h:
-        return None
-    cand = list(table.items()) + [(l, l) for l in table.values()]
-    for k, l in cand:
-        if _norm_series(k) == h:
-            return l
-    for k, l in cand:
-        nk = _norm_series(k)
-        if len(nk) >= 4 and len(h) >= 4 and (nk in h or h in nk):
-            return l
-    return None
+    clés et libellés sont tous deux candidats (un identifiant brut peut
+    être l'un ou l'autre)."""
+    m = series_match(ident, list(table.keys()) + list(table.values()))
+    # clé → libellé de sa ligne ; libellé → lui-même
+    return table.get(m, m) if m is not None else None
 
 
 def series_from_soup(soup, table):
@@ -551,15 +536,6 @@ def series_event_ids(slug):
         return set()
 
 
-def _slugify(s):
-    """« Fête de la science » → « fete-de-la-science » — variante de
-    slug plausible pour sonder la page série du site."""
-    import unicodedata
-    s = unicodedata.normalize("NFD", s or "")
-    s = "".join(c for c in s if not unicodedata.combining(c)).lower()
-    return re.sub(r"-+", "-", re.sub(r"[^a-z0-9]+", "-", s)).strip("-")
-
-
 def series_event_ids_for(slug, label, cache=None):
     """IDs des événements d'une série — sondes successives de pages
     /au-programme/<slug> plausibles :
@@ -571,12 +547,12 @@ def series_event_ids_for(slug, label, cache=None):
     4. les clés et slug de libellé des tables par défaut résolues par
        l'identifiant (« grandstemoins » → « les-grands-temoins »)"""
     from .oa import SERIES_KEYWORDS
-    cands = [slug, _slugify(slug), _slugify(label)]
+    cands = [slug, slugify(slug), slugify(label)]
     for tbl in (SERIES, SERIES_KEYWORDS):
         for ident in (slug, label):
             k = _series_key_for(ident, tbl)
             if k:
-                cands += [k, _slugify(tbl[k])]
+                cands += [k, slugify(tbl[k])]
     seen = set()
     for c in cands:
         if c and c not in seen:
@@ -598,7 +574,7 @@ def _unique_series_rows(table):
     page série quand series_map contient des alias."""
     seen, out = set(), []
     for slug, label in table.items():
-        sig = (_norm_series(slug), _norm_series(label))
+        sig = (norm_series(slug), norm_series(label))
         if sig[0] in seen or sig[1] in seen:
             continue
         seen.update(sig)

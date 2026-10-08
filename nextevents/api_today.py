@@ -3,6 +3,7 @@
 from flask import Blueprint, jsonify, request, send_from_directory
 
 from . import slide as _slide
+from .layout import write_manifest
 from .settings import atomic_write, load_settings, resolve_out_dir
 from .webutil import events_meta
 
@@ -139,7 +140,7 @@ def api_today_delete():
     for p in d.iterdir():
         if p.is_file():
             p.unlink()
-    atomic_write(d / "manifest.txt", "")
+    write_manifest(d)   # manifeste vide : le retrait se propage
     s = load_settings()
 
     def _rs():

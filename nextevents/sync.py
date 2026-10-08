@@ -2,6 +2,10 @@
 local (disque, lecteur réseau mappé, chemin UNC). Ne supprime à
 distance que les .png/.html absents en local.
 
+Un seul algorithme de miroir (_push_dir) — chaque destination ne
+fournit que ses primitives distantes (ls / put / delete / ensure) via
+une classe _*Remote.
+
 Chaque destination choisit ce qu'elle reçoit via ses réglages :
 `<proto>_send_landscape` (défaut oui — racine) et `<proto>_send_portrait`
 (défaut non — sous-dossier distant `portrait/`)."""
@@ -27,70 +31,174 @@ def _dirs(out_dir, cfg, proto):
     return dirs
 
 
-def _ftp_push_dir(ftp, src, sub):
-    """Pousse un dossier local (*.png + *.html racine + html/*.html +
-    manifest.txt) vers le dossier courant du FTP, ou son sous-dossier
-    `sub` s'il est donné. Les .html à la racine servent à today/ (la
-    racine du diaporama n'en a pas — glob vide, no-op)."""
-    depth = 0
-    if sub:
+def _push_dir(src, remote):
+    """Miroir d'un dossier généré vers `remote` : *.png + *.html à la
+    racine, html/*.html, puis manifest.txt en dernier — marqueur
+    d'intégrité poussé après le contenu. Les .html racine servent à
+    today/ (la racine du diaporama n'en a pas — glob vide, no-op).
+
+    Règles partagées par les trois protocoles :
+    - upload quand la taille distante diffère (taille inconnue → upload)
+    - suppression distante des fichiers absents en local
+    - le sous-dossier html/ n'est visité que s'il contient des fichiers
+      locaux (ses orphelins distants ne sont alors purgés que là)
+    - vérification finale : l'ensemble distant des .png == le jeu local
+    """
+    for pattern, hsub in (("*.png", ""), ("*.html", ""), ("*.html", "html")):
+        sdir = src if not hsub else src / hsub
+        local = {p.name: p for p in sdir.glob(pattern)}
+        if hsub and not local:
+            continue
+        if hsub:
+            remote.ensure(hsub)
+        remote_files = remote.ls(hsub, pattern[1:])   # {nom: taille|None}
+        for name, p in sorted(local.items()):
+            if remote_files.get(name) == p.stat().st_size:
+                continue  # déjà à jour à distance
+            remote.put(p, hsub, name)
+            print(f"  ↑ {remote.tag} {remote.join(hsub, name)}")
+        for name in sorted(set(remote_files) - set(local)):
+            remote.delete(hsub, name)
+            print(f"  - {remote.tag} : {name} supprimé")
+    manifest = src / "manifest.txt"
+    if manifest.exists():
+        remote.put(manifest, "", "manifest.txt")
+    remote_pngs = set(remote.ls("", ".png"))
+    expected = {p.name for p in src.glob("*.png")}
+    if remote_pngs == expected:
+        print(f"  synchro {remote.tag} vérifiée : "
+              f"{len(expected)} fichiers conformes")
+    else:
+        print(
+            f"  ⚠ divergence {remote.tag} — manquants : "
+            f"{sorted(expected - remote_pngs)} / "
+            f"en trop : {sorted(remote_pngs - expected)}")
+
+
+class _FtpRemote:
+    """Dossier distant atteint par chemins relatifs depuis le cwd de la
+    session (ftp_path) — « today/index.png » — sans navigation cwd
+    aller-retour : une erreur en cours de synchro ne laisse plus la
+    session dans un dossier intermédiaire."""
+
+    tag = "FTP"
+
+    def __init__(self, ftp, sub):
+        self.ftp, self.sub = ftp, sub
+        if sub:
+            try:
+                ftp.mkd(sub)
+            except Exception:
+                pass
+
+    def join(self, *parts):
+        return "/".join(x for x in (self.sub, *parts) if x)
+
+    def ensure(self, hsub):
         try:
-            ftp.mkd(sub)
+            self.ftp.mkd(self.join(hsub))
         except Exception:
             pass
-        ftp.cwd(sub)
-        depth = 1
-    try:
-        for pattern, hsub in (("*.png", None), ("*.html", None),
-                              ("*.html", "html")):
-            sdir = src if hsub is None else src / hsub
-            local = {p.name: p for p in sdir.glob(pattern)}
-            if hsub:
-                if local:
-                    try:
-                        ftp.mkd(hsub)
-                    except Exception:
-                        pass
-                    ftp.cwd(hsub)
-                    depth += 1
-                else:
-                    continue
-            remote = {n for n in ftp.nlst() if n.endswith(pattern[1:])}
-            remote_size = {}
-            for n in remote:
-                try:
-                    remote_size[n] = ftp.size(n)
-                except Exception:
-                    pass
-            for name, p in sorted(local.items()):
-                if remote_size.get(name) == p.stat().st_size:
-                    continue  # déjà à jour à distance
-                with open(p, "rb") as f:
-                    ftp.storbinary(f"STOR {name}", f)
-                print(f"  ↑ {sub + '/' if sub else ''}{name}")
-            for name in sorted(remote - set(local)):
-                ftp.delete(name)
-                print(f"  - distant : {name} supprimé")
-            if hsub:
-                ftp.cwd("..")
-                depth -= 1
-        manifest = src / "manifest.txt"
-        if manifest.exists():
-            with open(manifest, "rb") as f:
-                ftp.storbinary("STOR manifest.txt", f)
-        remote_pngs = {n for n in ftp.nlst() if n.endswith(".png")}
-        expected = {p.name for p in src.glob("*.png")}
-        if remote_pngs == expected:
-            print(f"  synchro FTP {sub or '.'} vérifiée : "
-                  f"{len(expected)} fichiers conformes")
-        else:
-            print(
-                "  ⚠ divergence FTP — manquants : "
-                f"{sorted(expected - remote_pngs)} / en trop : {sorted(remote_pngs - expected)}"
-            )
-    finally:
-        for _ in range(depth):
-            ftp.cwd("..")
+
+    def ls(self, hsub, suffix):
+        d = self.join(hsub)
+        try:
+            names = self.ftp.nlst(d) if d else self.ftp.nlst()
+        except Exception:
+            return {}
+        out = {}
+        for n in names:
+            # nlst(d) rend selon le serveur « file » ou « d/file »
+            b = n.rsplit("/", 1)[-1]
+            if not b.endswith(suffix):
+                continue
+            try:
+                out[b] = self.ftp.size(self.join(hsub, b))
+            except Exception:
+                out[b] = None   # taille inconnue → ré-upload
+        return out
+
+    def put(self, src, hsub, name):
+        with open(src, "rb") as f:
+            self.ftp.storbinary(f"STOR {self.join(hsub, name)}", f)
+
+    def delete(self, hsub, name):
+        self.ftp.delete(self.join(hsub, name))
+
+
+class _SmbRemote:
+    """Dossier d'un partage SMB via smbclient (chemins \\)."""
+
+    tag = "SMB"
+
+    def __init__(self, base, sub):
+        self.d = base if not sub else base + "\\" + sub
+        if sub:
+            self.ensure("")
+
+    def join(self, *parts):
+        return "\\".join(x for x in (self.d, *parts) if x)
+
+    def ensure(self, hsub):
+        from smbclient import makedirs
+        makedirs(self.join(hsub), exist_ok=True)
+
+    def ls(self, hsub, suffix):
+        from smbclient import listdir, stat
+        dd = self.join(hsub)
+        try:
+            names = listdir(dd)
+        except Exception:
+            return {}
+        out = {}
+        for n in names:
+            if not n.endswith(suffix):
+                continue
+            try:
+                out[n] = stat(dd + "\\" + n).st_size
+            except Exception:
+                out[n] = None
+        return out
+
+    def put(self, src, hsub, name):
+        from smbclient import open_file
+        with open(src, "rb") as f, \
+                open_file(self.join(hsub, name), "wb") as dst:
+            dst.write(f.read())
+
+    def delete(self, hsub, name):
+        from smbclient import remove
+        remove(self.join(hsub, name))
+
+
+class _LocalRemote:
+    """Dossier du système de fichiers — lecteur réseau mappé (X:\\…) ou
+    chemin UNC (\\\\hôte\\partage) inclus : pas besoin de smbprotocol
+    ni d'identifiants, Windows gère l'auth."""
+
+    tag = "local"
+
+    def __init__(self, base, sub):
+        self.d = Path(base) / sub if sub else Path(base)
+        self.d.mkdir(parents=True, exist_ok=True)
+
+    def join(self, *parts):
+        return str(self.d.joinpath(*parts)) if parts else str(self.d)
+
+    def ensure(self, hsub):
+        (self.d / hsub).mkdir(parents=True, exist_ok=True)
+
+    def ls(self, hsub, suffix):
+        dd = self.d / hsub if hsub else self.d
+        if not dd.is_dir():
+            return {}
+        return {p.name: p.stat().st_size for p in dd.glob("*" + suffix)}
+
+    def put(self, src, hsub, name):
+        shutil.copy2(src, self.d / hsub / name if hsub else self.d / name)
+
+    def delete(self, hsub, name):
+        (self.d / hsub / name if hsub else self.d / name).unlink()
 
 
 def sync_ftp(out_dir, cfg):
@@ -115,58 +223,12 @@ def sync_ftp(out_dir, cfg):
                 pass
             ftp.cwd(part)
         for sub, src in _dirs(out_dir, cfg, "ftp"):
-            _ftp_push_dir(ftp, src, sub)
+            _push_dir(src, _FtpRemote(ftp, sub))
     finally:
         try:
             ftp.quit()
         except Exception:
             ftp.close()
-
-
-def _smb_push_dir(src, d):
-    """Pousse un dossier local (*.png + *.html racine + html/*.html +
-    manifest.txt) vers le chemin SMB `d`."""
-    from smbclient import listdir, makedirs, open_file, remove, stat
-
-    for pattern, hsub in (("*.png", None), ("*.html", None),
-                          ("*.html", "html")):
-        sdir = src if hsub is None else src / hsub
-        local = {p.name: p for p in sdir.glob(pattern)}
-        if hsub and not local:
-            continue
-        dd = d if hsub is None else d + "\\" + hsub
-        if hsub:
-            makedirs(dd, exist_ok=True)
-        remote = {n for n in listdir(dd) if n.endswith(pattern[1:])}
-        remote_size = {}
-        for n in remote:
-            try:
-                remote_size[n] = stat(dd + "\\" + n).st_size
-            except Exception:
-                pass
-        for name, p in sorted(local.items()):
-            if remote_size.get(name) == p.stat().st_size:
-                continue  # déjà à jour à distance
-            with open(p, "rb") as f, open_file(dd + "\\" + name, "wb") as dst:
-                dst.write(f.read())
-            print(f"  ↑ smb {name}")
-        for name in sorted(remote - set(local)):
-            remove(dd + "\\" + name)
-            print(f"  - smb : {name} supprimé")
-    manifest = src / "manifest.txt"
-    if manifest.exists():
-        with open(manifest, "rb") as f, open_file(d + "\\manifest.txt", "wb") as dst:
-            dst.write(f.read())
-    remote_pngs = {n for n in listdir(d) if n.endswith(".png")}
-    expected = {p.name for p in src.glob("*.png")}
-    if remote_pngs == expected:
-        print(f"  synchro SMB {d} vérifiée : "
-              f"{len(expected)} fichiers conformes")
-    else:
-        print(
-            "  ⚠ divergence SMB — manquants : "
-            f"{sorted(expected - remote_pngs)} / en trop : {sorted(remote_pngs - expected)}"
-        )
 
 
 def sync_smb(out_dir, cfg):
@@ -189,51 +251,12 @@ def sync_smb(out_dir, cfg):
     makedirs(base, exist_ok=True)
 
     for sub, src in _dirs(out_dir, cfg, "smb"):
-        d = base if not sub else base + "\\" + sub
-        if sub:
-            makedirs(d, exist_ok=True)
-        _smb_push_dir(src, d)
-
-
-def _local_push_dir(src, d):
-    """Miroir d'un dossier local (*.png + *.html racine + html/*.html +
-    manifest.txt) vers le chemin `d` (disque, lecteur mappé ou UNC
-    \\\\hôte\\partage)."""
-    d.mkdir(parents=True, exist_ok=True)
-    for pattern, hsub in (("*.png", None), ("*.html", None),
-                          ("*.html", "html")):
-        sdir = src if hsub is None else src / hsub
-        local = {p.name: p for p in sdir.glob(pattern)}
-        if hsub and not local:
-            continue
-        dd = d if hsub is None else d / hsub
-        if hsub:
-            dd.mkdir(parents=True, exist_ok=True)
-        remote = {p.name: p for p in dd.glob(pattern)}
-        for name, p in sorted(local.items()):
-            rp = remote.get(name)
-            if rp is not None and rp.stat().st_size == p.stat().st_size:
-                continue  # déjà à jour à distance
-            shutil.copy2(p, dd / name)
-            print(f"  ↑ {dd / name}")
-        for name in sorted(set(remote) - set(local)):
-            (dd / name).unlink()
-            print(f"  - local : {name} supprimé")
-    manifest = src / "manifest.txt"
-    if manifest.exists():
-        shutil.copy2(manifest, d / "manifest.txt")
-    remote_pngs = {p.name for p in d.glob("*.png")}
-    expected = {p.name for p in src.glob("*.png")}
-    if remote_pngs == expected:
-        print(f"  synchro locale {d} vérifiée : "
-              f"{len(expected)} fichiers conformes")
+        _push_dir(src, _SmbRemote(base, sub))
 
 
 def sync_local(out_dir, cfg):
     """Copie miroir de tout ce qui a été généré vers un dossier du
-    système de fichiers — lecteur réseau mappé (X:\\…) ou chemin UNC
-    (\\\\hôte\\partage) inclus : pas besoin de smbprotocol ni
-    d'identifiants, Windows gère l'auth."""
+    système de fichiers — lecteur réseau mappé ou chemin UNC."""
     dest = (cfg.get("local_dir") or "").strip()
     if not dest:
         return
@@ -244,8 +267,7 @@ def sync_local(out_dir, cfg):
     if (out_dir / "today").is_dir():
         dirs.append(("today", out_dir / "today"))
     for sub, src in dirs:
-        d = Path(dest) / sub if sub else Path(dest)
-        _local_push_dir(src, d)
+        _push_dir(src, _LocalRemote(Path(dest), sub))
 
 
 def push_all(out_dir, cfg):

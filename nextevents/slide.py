@@ -187,38 +187,49 @@ def render_png_firefox(html_path, png_path, size=DEFAULT_SIZE):
     with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
         tmp_out = Path(tmp.name)
     tmp_out.unlink()
-    cmd = [
-        "firefox", "--headless", f"--window-size={w},{h}",
-        "--screenshot", str(tmp_out), zoomed.as_uri(),
-    ]
-    for _ in range(2):
-        r = subprocess.run(cmd, capture_output=True, timeout=120)
-        if tmp_out.exists() and tmp_out.stat().st_size > 0:
-            break
-    else:
-        raise RuntimeError(f"firefox screenshot KO : {r.stderr.decode()[:400]}")
-    img = Image.open(tmp_out).convert("RGB")
-    img = img.resize(size) if img.size != size else img
-    img.save(png_path, "PNG")
-    tmp_out.unlink()
-    zoomed.unlink()
+    try:
+        cmd = [
+            "firefox", "--headless", f"--window-size={w},{h}",
+            "--screenshot", str(tmp_out), zoomed.as_uri(),
+        ]
+        for _ in range(2):
+            r = subprocess.run(cmd, capture_output=True, timeout=120)
+            if tmp_out.exists() and tmp_out.stat().st_size > 0:
+                break
+        else:
+            raise RuntimeError(
+                f"firefox screenshot KO : {r.stderr.decode()[:400]}")
+        img = Image.open(tmp_out).convert("RGB")
+        img = img.resize(size) if img.size != size else img
+        img.save(png_path, "PNG")
+        tmp_out.unlink()
+    finally:
+        # le .zoom.html vivrait dans html/ et serait poussé à distance
+        # à la prochaine synchro s'il restait après un échec
+        zoomed.unlink(missing_ok=True)
+
+
+def _render_firefox(slides, size):
+    for hp, pp in slides:
+        try:
+            render_png_firefox(hp, pp, size)
+            yield pp
+        except Exception as e:
+            print(f"  ✗ {pp.name} : {e}")
 
 
 def render_all(slides, size=DEFAULT_SIZE):
     """Rend les diapos via Playwright/Chromium (viewport aux dimensions
     de conception + device_scale_factor → texte vectoriel ultra net).
-    Repli Firefox si Playwright est absent."""
+    Repli Firefox si Playwright est absent OU si le navigateur ne se
+    lance pas (binaire manquant, poste verrouillé)."""
     w, h = size
     dw, dh = DESIGNS["portrait" if h > w else "landscape"]
+    slides = list(slides)
     try:
         from playwright.sync_api import sync_playwright
     except ImportError:
-        for hp, pp in slides:
-            try:
-                render_png_firefox(hp, pp, size)
-                yield pp
-            except Exception as e:
-                print(f"  ✗ {pp.name} : {e}")
+        yield from _render_firefox(slides, size)
         return
 
     with sync_playwright() as p:
@@ -247,7 +258,9 @@ def render_all(slides, size=DEFAULT_SIZE):
                 print(f"  ✗ lancement navigateur ({ch or 'chromium'}, "
                       f"headless={headless}) : {type(e).__name__}")
         if browser is None:
-            raise RuntimeError("impossible de lancer le navigateur de rendu")
+            print("  ! navigateur de rendu indisponible — repli Firefox")
+            yield from _render_firefox(slides, size)
+            return
         page = browser.new_page(
             viewport={"width": dw, "height": dh},
             device_scale_factor=w / dw,

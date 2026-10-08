@@ -12,6 +12,7 @@ from string import Template
 
 from .media import ensure_fonts
 from .paths import ASSET_DIR
+from .layout import write_manifest
 from .settings import OUT_DIR, atomic_write
 from .scrape import BASE, CARD_COLORS
 
@@ -284,8 +285,5 @@ def render_today_png(size, out_dir=None):
         raise RuntimeError("rendu de la diapo du jour impossible")
     # manifeste du jeu — les synchros le poussent en dernier comme
     # marqueur d'intégrité, comme pour le diaporama principal
-    d = out / "today"
-    atomic_write(
-        d / "manifest.txt",
-        "\n".join(p.name for p in sorted(d.glob("*.png"))) + "\n")
+    write_manifest(out / "today")
     return png

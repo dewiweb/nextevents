@@ -6,6 +6,7 @@ from pathlib import Path
 
 from PIL import Image
 
+from .layout import render_sets, write_manifest
 from .media import download_image, ensure_fonts
 from .paths import OUT_DIR
 from .scrape import (
@@ -77,9 +78,7 @@ def _render_set(events, fonts, dest, size, orientation="landscape"):
     pngs = sorted(dest.glob("*.png"))
 
     # manifeste du jeu attendu — uploadé en dernier par les synchros
-    atomic_write(
-        dest / "manifest.txt",
-        "\n".join(p.name for p in pngs) + "\n")
+    write_manifest(dest)
     return pngs
 
 
@@ -241,18 +240,17 @@ def generate(out_dir=None, max_events=0, pages=99, cfg=None, size=DEFAULT_SIZE):
     fonts = ensure_fonts()
 
     print(f"4/5 Génération du dossier {out}/…")
-    gen_landscape = cfg is None or cfg.get("gen_landscape", 1)
-    gen_portrait = cfg and cfg.get("gen_portrait")
     pngs = []
-    if gen_landscape:
-        pngs = _render_set(events, fonts, out, size)
-    if gen_portrait:
-        # format A4 portrait (HD → 1240×1754 à 150 dpi, UHD → 2480×3508
-        # à 300 dpi) dans un sous-dossier : pas poussé par les synchros,
-        # destiné à la com (impression / écrans verticaux)
-        scale = size[0] / DESIGNS["landscape"][0]
-        psize = tuple(round(d * scale) for d in DESIGNS["portrait"])
-        _render_set(events, fonts, out / "portrait", psize, "portrait")
+    for orientation, dest in render_sets(cfg, out):
+        if orientation == "portrait":
+            # format A4 portrait (HD → 1240×1754 à 150 dpi, UHD →
+            # 2480×3508 à 300 dpi) — destiné à la com (impression /
+            # écrans verticaux), poussé seulement si *_send_portrait
+            scale = size[0] / DESIGNS["landscape"][0]
+            psize = tuple(round(d * scale) for d in DESIGNS["portrait"])
+            _render_set(events, fonts, dest, psize, "portrait")
+        else:
+            pngs = _render_set(events, fonts, dest, size)
 
     if cfg:
         print("6/6 Synchronisation…")

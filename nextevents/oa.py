@@ -26,6 +26,7 @@ from bs4 import BeautifulSoup
 from .scrape import (
     DEFAULT_CATEGORIES, _extract_access, _extract_note, _extract_people,
 )
+from .series import series_match
 
 TZ = ZoneInfo("Europe/Paris")
 API = "https://api.openagenda.com/v2"
@@ -239,7 +240,7 @@ def _base_map(e, cat_value, cat_label, public_label, kws, cond, timings,
     # sous-chaîne ≥4 (« nosfuturs » ⊂ « nosfuturs2027 »)
     series = next(
         (lbl for k, lbl in (series_map or SERIES_KEYWORDS).items()
-         if _kw_match(k, kws)), "")
+         if series_match(k, kws)), "")
 
     return {
         "title": title, "url": url, "tag": tag, "color": None,
@@ -445,27 +446,6 @@ def oa_list_events(cfg):
     return _legacy_events(agenda, series_map, next_label)
 
 
-def _norm(s):
-    """minuscules, sans accents ni séparateurs — pour croiser un slug
-    de page site (« nos-futurs-2027 ») et un keyword OA (« nosfuturs »)."""
-    import unicodedata
-    s = unicodedata.normalize("NFD", s or "")
-    return "".join(c for c in s
-                   if not unicodedata.combining(c) and c.isalnum()).lower()
-
-
-def _kw_match(key, kws):
-    """La clé d'une série configurée correspond-elle à l'un des
-    keywords OA de l'événement ? Égalité normalisée, puis sous-chaîne
-    ≥4 caractères."""
-    nk = _norm(key)
-    return any(
-        nk == _norm(kw)
-        or (4 <= len(nk) and 4 <= len(_norm(kw))
-            and (nk in _norm(kw) or _norm(kw) in nk))
-        for kw in kws)
-
-
 def detect_series(agenda="leschampslibres"):
     """Détecte les séries éditoriales candidates dans les deux sources :
     - keywords OA non techniques (export legacy, pas de clé requise)
@@ -533,9 +513,7 @@ def detect_series(agenda="leschampslibres"):
         # absorbés par la ligne du slug — le matching keyword↔série
         # utilise la même règle, une seule entrée suffit
         for k in list(kws):
-            if len(_norm(k)) >= 4 and (
-                    _norm(k) in _norm(slug)
-                    or _norm(slug) in _norm(k)):
+            if series_match(k, [slug]):
                 del kws[k]
 
     for k in kws:   # keywords sans page série associée sur le site

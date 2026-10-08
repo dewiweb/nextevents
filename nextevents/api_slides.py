@@ -7,6 +7,7 @@ from pathlib import Path
 from flask import Blueprint, jsonify, request, send_from_directory
 
 from . import slide as _slide
+from .layout import write_manifest
 from .settings import atomic_write, load_settings, resolve_out_dir
 
 bp = Blueprint("slides", __name__)
@@ -37,9 +38,7 @@ def _rewrite_manifests():
     out = resolve_out_dir()
     for d in (out, out / "portrait"):
         if d.exists():
-            atomic_write(
-                d / "manifest.txt",
-                "\n".join(p.name for p in sorted(d.glob("*.png"))) + "\n")
+            write_manifest(d)
 
 
 def _drop_from_events_json(name):
